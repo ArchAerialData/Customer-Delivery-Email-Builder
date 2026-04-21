@@ -5,6 +5,7 @@ import uuid
 import re
 import sys
 import logging
+import webbrowser
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -38,7 +39,11 @@ def _resource_path(*parts: str) -> Path:
 
 DATA_DIR = _resource_path("2026_02_03")
 XLSX_WORKBOOKS_DIR = _resource_path("XLSX Workbooks")
-MASTER_FILE = _resource_path("XLSX Workbooks", "Client-Site-URL-Email.xlsx")
+MASTER_FILE = _resource_path("XLSX Workbooks", "Customer Information.xlsx")
+if not MASTER_FILE.exists():
+    MASTER_FILE = _resource_path("XLSX Workbooks", "Client-Site-URL-Email.xlsx")
+if not MASTER_FILE.exists():
+    MASTER_FILE = DATA_DIR / "Customer Information.xlsx"
 if not MASTER_FILE.exists():
     MASTER_FILE = DATA_DIR / "Client-Site-URL-Email.xlsx"
 MASTER_SHEET = "Construction"
@@ -85,6 +90,14 @@ MEDIA_BODY = {
     "photos, video, and 2D mapping": "progress photos, video, and 2D mapping",
     "photos, and 2D mapping": "progress photos and 2D mapping",
     "ROW Documentation Video": "ROW documentation video",
+}
+
+MASTER_HEADERS = {
+    "client": "Client",
+    "project name": "Project Name",
+    "dropbox urls": "Dropbox URLs",
+    "operations contact email": "Operations Contact Email",
+    "procore": "Procore",
 }
 
 
@@ -142,6 +155,15 @@ def _sheet_aliases(sheet_name: str):
     if sheet_name == MASTER_SHEET:
         return [MASTER_SHEET, LEGACY_MASTER_SHEET]
     return [sheet_name]
+
+
+def _master_cell_value(row, idx: int):
+    if idx is None or idx < 0 or idx >= len(row):
+        return ""
+    value = row[idx]
+    if isinstance(value, str):
+        return value.strip()
+    return value or ""
 
 
 def normalize_email_list(raw) -> str:
@@ -267,6 +289,7 @@ class EmailTemplateApp:
         self.graph_client = None
 
         self._apply_theme()
+        self._ensure_master_workbook_schema()
         self._load_data()
         self._init_graph_client()
         self._build_ui()
@@ -365,17 +388,64 @@ class EmailTemplateApp:
     def _get_or_create_sheet(self, wb, sheet_name: str):
         resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=True)
         if resolved_sheet:
-            return wb[resolved_sheet]
+            ws = wb[resolved_sheet]
+            self._master_column_map(ws, ensure=True)
+            return ws
 
         ws = wb.create_sheet(sheet_name)
         source_sheet_name = self._resolve_sheet_name(wb, MASTER_SHEET, allow_missing=True)
-        headers = ["Client", "Project Name", "Dropbox URLs", "Operations Contact Email"]
+        headers = list(MASTER_HEADERS.values())
         if source_sheet_name:
             source_headers = [cell.value for cell in next(wb[source_sheet_name].iter_rows(min_row=1, max_row=1))]
             if any(source_headers):
                 headers = source_headers
         ws.append(headers)
         return ws
+
+    def _master_column_map(self, ws, ensure: bool = False):
+        headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        col_map = {}
+        for idx, header in enumerate(headers, start=1):
+            if not header:
+                continue
+            normalized = str(header).strip().lower()
+            if normalized in MASTER_HEADERS and normalized not in col_map:
+                col_map[normalized] = idx
+
+        changed = False
+        if ensure:
+            for normalized, header in MASTER_HEADERS.items():
+                if normalized not in col_map:
+                    idx = ws.max_column + 1
+                    ws.cell(row=1, column=idx, value=header)
+                    col_map[normalized] = idx
+                    changed = True
+        return col_map, changed
+
+    def _build_master_row(self, ws, values: dict):
+        col_map, _ = self._master_column_map(ws, ensure=True)
+        row = [""] * max(col_map.values())
+        for key, value in values.items():
+            col_idx = col_map.get(key)
+            if col_idx is None:
+                continue
+            row[col_idx - 1] = value
+        return row
+
+    def _ensure_master_workbook_schema(self):
+        if not MASTER_FILE.exists():
+            return
+        wb = openpyxl.load_workbook(MASTER_FILE)
+        changed = False
+        for sheet_name in (MASTER_SHEET, OIL_GAS_SHEET):
+            resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=True)
+            if not resolved_sheet:
+                continue
+            _, sheet_changed = self._master_column_map(wb[resolved_sheet], ensure=True)
+            changed = changed or sheet_changed
+        if changed:
+            wb.save(MASTER_FILE)
+        wb.close()
 
     def _sync_primary_master_views(self):
         self.master_data = list(self.sheet_data.get(MASTER_SHEET, []))
@@ -402,6 +472,34 @@ class EmailTemplateApp:
             {"row": row["row"], "client": row["client"], "site": row["site"], "email": row["email"]}
             for row in self._compose_rows()
         ]
+
+    def _lookup_compose_field(self, field_name: str) -> str:
+        client = self.client_var.get().strip()
+        site = self.site_var.get().strip()
+        rows = self._compose_rows()
+        if not client:
+            return ""
+
+        client_key = _normalize_key(client)
+
+        def _client_matches(row):
+            return row["client"] == client or _normalize_key(row["client"]) == client_key
+
+        matching_rows = [row for row in rows if _client_matches(row)]
+        if not matching_rows:
+            return ""
+
+        if site:
+            site_key = _normalize_key(site)
+            for row in matching_rows:
+                if row["client"] == client and row["site"] == site:
+                    return str(row.get(field_name, "") or "")
+            for row in matching_rows:
+                if _normalize_key(row["site"]) == site_key:
+                    return str(row.get(field_name, "") or "")
+
+        matching_rows = sorted(matching_rows, key=lambda row: str(row.get("site", "")))
+        return str(matching_rows[0].get(field_name, "") or "")
 
     def _sheet_for_cc_list(self, list_name: str) -> str:
         normalized = (list_name or "").strip().lower()
@@ -467,25 +565,29 @@ class EmailTemplateApp:
             wb.close()
             return []
         ws = wb[resolved_sheet]
-        headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
-        col_map = {str(h).strip().lower(): idx for idx, h in enumerate(headers) if h}
-        client_idx = col_map.get("client", 0)
-        site_idx = col_map.get("project name", 1)
-        link_idx = col_map.get("dropbox urls", 2)
-        email_idx = col_map.get("operations contact email", 3)
+        col_map, _ = self._master_column_map(ws, ensure=False)
+        client_idx = col_map.get("client", 1) - 1
+        site_idx = col_map.get("project name", 2) - 1
+        link_idx = col_map.get("dropbox urls", 3) - 1
+        email_idx = col_map.get("operations contact email", 4) - 1
+        procore_idx = col_map.get("procore")
+        if procore_idx is not None:
+            procore_idx -= 1
         rows = []
         for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-            client = (row[client_idx] or "").strip() if isinstance(row[client_idx], str) else row[client_idx]
-            site = (row[site_idx] or "").strip() if isinstance(row[site_idx], str) else row[site_idx]
-            link = (row[link_idx] or "").strip() if isinstance(row[link_idx], str) else row[link_idx]
-            email = (row[email_idx] or "").strip() if isinstance(row[email_idx], str) else row[email_idx]
+            client = _master_cell_value(row, client_idx)
+            site = _master_cell_value(row, site_idx)
+            link = _master_cell_value(row, link_idx)
+            email = _master_cell_value(row, email_idx)
+            procore = _master_cell_value(row, procore_idx)
             if client:
                 rows.append({
                     "row": idx,
                     "client": client,
                     "site": site,
-                    "link": link or "",
+                    "link": link,
                     "email": normalize_email_list(email),
+                    "procore": procore,
                 })
         wb.close()
         return rows
@@ -497,11 +599,12 @@ class EmailTemplateApp:
             wb.close()
             return
         ws = wb[resolved_sheet]
+        col_map, _ = self._master_column_map(ws, ensure=True)
         rows = list(ws.iter_rows(min_row=2, values_only=True))
         # Preserve rows but sort by Client then Project Name
         def _key(row):
-            client = row[0] or ""
-            site = row[1] or ""
+            client = _master_cell_value(row, col_map.get("client", 1) - 1)
+            site = _master_cell_value(row, col_map.get("project name", 2) - 1)
             return (str(client).strip().lower(), str(site).strip().lower())
         rows_sorted = sorted(rows, key=_key)
         # Clear existing data rows
@@ -1065,17 +1168,19 @@ class EmailTemplateApp:
 
         tree = ttk.Treeview(
             tree_frame,
-            columns=("client", "site", "email", "link"),
+            columns=("client", "site", "email", "link", "procore"),
             show="headings",
         )
         tree.heading("client", text="Client")
         tree.heading("site", text="Site")
         tree.heading("email", text="Operations Contact Emails")
         tree.heading("link", text="Customer Dropbox URL")
+        tree.heading("procore", text="Procore")
         tree.column("client", width=180)
-        tree.column("site", width=240)
-        tree.column("email", width=320)
-        tree.column("link", width=420)
+        tree.column("site", width=210)
+        tree.column("email", width=280)
+        tree.column("link", width=330)
+        tree.column("procore", width=260)
         master_scroll = ttk.Scrollbar(
             tree_frame,
             orient="vertical",
@@ -1096,11 +1201,13 @@ class EmailTemplateApp:
         ttk.Label(form, text="Site", style="SectionTitle.TLabel").grid(row=0, column=1, sticky="w")
         ttk.Label(form, text="Operations Contact Emails", style="SectionTitle.TLabel").grid(row=0, column=2, sticky="w")
         ttk.Label(form, text="Customer Dropbox URL", style="SectionTitle.TLabel").grid(row=0, column=3, sticky="w")
+        ttk.Label(form, text="Procore", style="SectionTitle.TLabel").grid(row=0, column=4, sticky="w")
 
         client_var = tk.StringVar()
         site_var = tk.StringVar()
         email_var = tk.StringVar()
         link_var = tk.StringVar()
+        procore_var = tk.StringVar()
 
         ttk.Entry(form, textvariable=client_var, width=26).grid(row=1, column=0, sticky="w", padx=(0, 10))
         ttk.Entry(form, textvariable=site_var, width=32).grid(row=1, column=1, sticky="w", padx=(0, 10))
@@ -1121,7 +1228,8 @@ class EmailTemplateApp:
         email_text.bind("<FocusOut>", lambda _e, sheet=sheet_name: self._collapse_master_email_editor(sheet))
         email_text.bind("<Control-v>", lambda e, sheet=sheet_name: self._paste_master_email_list(e, sheet))
         email_text.bind("<<Paste>>", lambda e, sheet=sheet_name: self._paste_master_email_list(e, sheet))
-        ttk.Entry(form, textvariable=link_var, width=52).grid(row=1, column=3, sticky="w")
+        ttk.Entry(form, textvariable=link_var, width=40).grid(row=1, column=3, sticky="w", padx=(0, 10))
+        ttk.Entry(form, textvariable=procore_var, width=34).grid(row=1, column=4, sticky="w")
         form.grid_columnconfigure(2, weight=1)
 
         btns = ttk.Frame(frame, style="Panel.TFrame")
@@ -1138,6 +1246,7 @@ class EmailTemplateApp:
             "site_var": site_var,
             "email_var": email_var,
             "link_var": link_var,
+            "procore_var": procore_var,
             "email_text": email_text,
             "email_scroll": email_scroll,
         }
@@ -1148,6 +1257,7 @@ class EmailTemplateApp:
             self.master_site_var = site_var
             self.master_email_var = email_var
             self.master_link_var = link_var
+            self.master_procore_var = procore_var
             self.master_email_text = email_text
             self.master_email_scroll = email_scroll
 
@@ -1535,59 +1645,26 @@ class EmailTemplateApp:
         self._on_site_change()
 
     def _on_site_change(self):
-        client = self.client_var.get()
-        site = self.site_var.get()
-        compose_dropbox_data = self._compose_dropbox_data()
-        compose_contacts_data = self._compose_contacts_data()
-        if not client:
+        if not self.client_var.get().strip():
             self.link_var.set("")
             self._set_compose_to_text("")
             return
+        self.link_var.set(self._lookup_compose_field("link"))
+        self._set_compose_to_text(self._lookup_compose_field("email"))
 
-        c_key = _normalize_key(client)
-
-        def _client_rows(rows):
-            exact = [r for r in rows if r["client"] == client]
-            if exact:
-                return sorted(exact, key=lambda r: str(r.get("site", "")))
-            norm = [r for r in rows if _normalize_key(r["client"]) == c_key]
-            return sorted(norm, key=lambda r: str(r.get("site", "")))
-
-        link = ""
-        if site:
-            for row in compose_dropbox_data:
-                if row["client"] == client and row["site"] == site:
-                    link = row["link"]
-                    break
-            if not link:
-                s_key = _normalize_key(site)
-                for row in compose_dropbox_data:
-                    if _normalize_key(row["client"]) == c_key and _normalize_key(row["site"]) == s_key:
-                        link = row["link"]
-                        break
-        else:
-            client_dropbox_rows = _client_rows(compose_dropbox_data)
-            if client_dropbox_rows:
-                link = client_dropbox_rows[0].get("link", "")
-        self.link_var.set(link)
-
-        email = ""
-        if site:
-            for row in compose_contacts_data:
-                if row["client"] == client and row["site"] == site:
-                    email = row["email"]
-                    break
-            if not email:
-                s_key = _normalize_key(site)
-                for row in compose_contacts_data:
-                    if _normalize_key(row["client"]) == c_key and _normalize_key(row["site"]) == s_key:
-                        email = row["email"]
-                        break
-        else:
-            client_contact_rows = _client_rows(compose_contacts_data)
-            if client_contact_rows:
-                email = client_contact_rows[0].get("email", "")
-        self._set_compose_to_text(email)
+    def _handle_post_draft_procore(self):
+        procore_link = self._lookup_compose_field("procore")
+        if not procore_link:
+            return
+        try:
+            opened = webbrowser.open(procore_link, new=2)
+            if not opened:
+                raise RuntimeError("No browser handler is available.")
+        except Exception:
+            messagebox.showinfo(
+                "Procore Link",
+                f"The draft was created.\n\nOpen this Procore link for the selected site:\n{procore_link}",
+            )
 
     def _reset_compose_state(self, refresh_clients: bool = True, force_blank_client_site: bool = False):
         if not hasattr(self, "client_var"):
@@ -1615,6 +1692,7 @@ class EmailTemplateApp:
         widgets["site_var"].set("")
         self._set_master_email_text("", sheet_name)
         widgets["link_var"].set("")
+        widgets["procore_var"].set("")
         tree = widgets["tree"]
         tree.selection_remove(tree.selection())
 
@@ -1956,6 +2034,7 @@ class EmailTemplateApp:
         if self.graph_client:
             try:
                 self._create_draft_graph(subject, body_html, signature_assets)
+                self._handle_post_draft_procore()
                 return
             except Exception as exc:
                 messagebox.showerror("Graph Error", f"Failed to create Graph draft: {exc}")
@@ -2023,6 +2102,7 @@ class EmailTemplateApp:
                 self._sync_outlook_now(outlook)
             except Exception:
                 pass
+            self._handle_post_draft_procore()
         except Exception as exc:
             messagebox.showerror("Outlook Error", f"Failed to create Outlook draft: {exc}")
 
@@ -2042,7 +2122,7 @@ class EmailTemplateApp:
                 "",
                 "end",
                 iid=str(row["row"]),
-                values=(row["client"], row["site"], row["email"], row["link"]),
+                values=(row["client"], row["site"], row["email"], row["link"], row.get("procore", "")),
             )
 
     def _load_dropbox_selection(self):
@@ -2072,6 +2152,7 @@ class EmailTemplateApp:
         widgets["site_var"].set(row["site"])
         self._set_master_email_text(row["email"], sheet_name)
         widgets["link_var"].set(row["link"])
+        widgets["procore_var"].set(row.get("procore", ""))
 
     def _add_master_entry(self, sheet_name: str = MASTER_SHEET):
         widgets = self.client_site_tabs.get(sheet_name)
@@ -2081,6 +2162,7 @@ class EmailTemplateApp:
         site = widgets["site_var"].get().strip()
         email = normalize_email_list(self._get_master_email_text(sheet_name))
         link = widgets["link_var"].get().strip()
+        procore = widgets["procore_var"].get().strip()
         if not client:
             messagebox.showwarning("Missing Data", "Client is required.")
             return
@@ -2088,7 +2170,18 @@ class EmailTemplateApp:
             self._record_undo(MASTER_FILE)
             wb = openpyxl.load_workbook(MASTER_FILE)
             ws = self._get_or_create_sheet(wb, sheet_name)
-            ws.append([client, site, link, email])
+            ws.append(
+                self._build_master_row(
+                    ws,
+                    {
+                        "client": client,
+                        "project name": site,
+                        "dropbox urls": link,
+                        "operations contact email": email,
+                        "procore": procore,
+                    },
+                )
+            )
             wb.save(MASTER_FILE)
             wb.close()
             self._sort_master_sheet(sheet_name)
@@ -2109,14 +2202,17 @@ class EmailTemplateApp:
         site = widgets["site_var"].get().strip()
         email = normalize_email_list(self._get_master_email_text(sheet_name))
         link = widgets["link_var"].get().strip()
+        procore = widgets["procore_var"].get().strip()
         try:
             self._record_undo(MASTER_FILE)
             wb = openpyxl.load_workbook(MASTER_FILE)
             ws = wb[self._resolve_sheet_name(wb, sheet_name)]
-            ws.cell(row=row_id, column=1, value=client)
-            ws.cell(row=row_id, column=2, value=site)
-            ws.cell(row=row_id, column=3, value=link)
-            ws.cell(row=row_id, column=4, value=email)
+            col_map, _ = self._master_column_map(ws, ensure=True)
+            ws.cell(row=row_id, column=col_map["client"], value=client)
+            ws.cell(row=row_id, column=col_map["project name"], value=site)
+            ws.cell(row=row_id, column=col_map["dropbox urls"], value=link)
+            ws.cell(row=row_id, column=col_map["operations contact email"], value=email)
+            ws.cell(row=row_id, column=col_map["procore"], value=procore)
             wb.save(MASTER_FILE)
             wb.close()
             self._sort_master_sheet(sheet_name)
