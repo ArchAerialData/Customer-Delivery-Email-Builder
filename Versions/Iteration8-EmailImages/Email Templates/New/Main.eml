@@ -1,0 +1,43 @@
+Subject: {site} - Aerial Progress {media_subject} - {date}
+To: {to_email}
+CC: {cc_email}
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============1122334455667788990=="
+
+--===============1122334455667788990==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Good Day {client} Team,
+
+Our pilots captured progress {media_body} of the {site} site on {date}. Please use the link below to access your imagery.
+
+Dropbox Link: {dropbox_link}
+
+Let us know if you have any questions, feedback, or if we can further assist you.
+
+Thank you,
+
+Steven McLaren
+Data Technician
+O (281) 974-5752
+3801 Yale Street, Suite C
+Houston, TX 77018
+www.archaerial.com
+
+--===============1122334455667788990==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<div style=3D"font-family:Arial,Helvetica,sans-serif; font-size:11pt; color:#000; line-height:1.35;">
+<p style=3D"margin:0 0 10px 0;">Good Day {client} Team,</p>
+<p style=3D"margin:0 0 8px 0;">Our pilots captured progress {media_body} of the {site} site on {date}. Please use the link below to access your imagery.</p>
+<p style=3D"margin:0 0 10px 0;"><b>Dropbox Link:</b> {dropbox_link}</p>
+<p style=3D"margin:0 0 12px 0;">Let us know if you have any questions, feedback, or if we can further assist you.</p>
+<p style=3D"margin:0 0 0 0;">Thank you,</p>
+<p style=3D"margin:0;">Steven McLaren<br>Data Technician<br>O (281) 974-5752<br>3801 Yale Street, Suite C<br>Houston, TX 77018<br>www.archaerial.com</p>
+</div>
+
+--===============1122334455667788990==--

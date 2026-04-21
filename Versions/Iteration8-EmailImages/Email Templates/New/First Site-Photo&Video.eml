@@ -1,0 +1,60 @@
+Subject: {site} - Aerial Progress {media_subject} - {date}
+To: {to_email}
+CC: {cc_email}
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============6677889900112233445=="
+
+--===============6677889900112233445==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Good Day {client} Team,
+
+We truly appreciated the opportunity to fly the {site} site for you. Our pilots successfully captured the requested deliverables, and we'd also like to showcase an additional service we can provide to further support your team.
+
+I have included a 2D map of your site which consists of:
+- High resolution TIFF file.
+- A smaller PNG file optimized for easy viewing on both mobile and desktop devices.
+- KMZ file that can be opened in Google Earth.
+
+Please use the link below to access these files.
+
+Dropbox Link: {dropbox_link}
+
+Ron Busby, our Sales Manager, will be reaching out soon to learn more about your needs for this project and explore how we can best support your team with additional deliverables.
+
+We look forward to continuing to support the {client} team and your future projects!
+
+Thank you,
+
+Steven McLaren
+Data Technician
+O (281) 974-5752
+3801 Yale Street, Suite C
+Houston, TX 77018
+www.archaerial.com
+
+--===============6677889900112233445==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<div style=3D"font-family:Arial,Helvetica,sans-serif; font-size:11pt; color:#000; line-height:1.35;">
+<p style=3D"margin:0 0 10px 0;">Good Day {client} Team,</p>
+<p style=3D"margin:0 0 10px 0;">We truly appreciated the opportunity to fly the {site} site for you. Our pilots successfully captured the requested deliverables, and we'd also like to showcase an additional service we can provide to further support your team.</p>
+<p style=3D"margin:0 0 8px 0;">I have included a 2D map of your site which consists of:</p>
+<ul style=3D"margin:0 0 10px 18px; padding:0;">
+<li style=3D"margin:0 0 6px 0;">High resolution TIFF file.</li>
+<li style=3D"margin:0 0 6px 0;">A smaller PNG file optimized for easy viewing on both mobile and desktop devices.</li>
+<li style=3D"margin:0 0 6px 0;">KMZ file that can be opened in Google Earth.</li>
+</ul>
+<p style=3D"margin:0 0 10px 0;">Please use the link below to access these files.</p>
+<p style=3D"margin:0 0 10px 0;"><b>Dropbox Link:</b> {dropbox_link}</p>
+<p style=3D"margin:0 0 10px 0;">Ron Busby, our Sales Manager, will be reaching out soon to learn more about your needs for this project and explore how we can best support your team with additional deliverables.</p>
+<p style=3D"margin:0 0 12px 0;">We look forward to continuing to support the {client} team and your future projects!</p>
+<p style=3D"margin:0 0 0 0;">Thank you,</p>
+<p style=3D"margin:0;">Steven McLaren<br>Data Technician<br>O (281) 974-5752<br>3801 Yale Street, Suite C<br>Houston, TX 77018<br>www.archaerial.com</p>
+</div>
+
+--===============6677889900112233445==--

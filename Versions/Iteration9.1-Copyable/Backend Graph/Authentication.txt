@@ -1,0 +1,7 @@
+Application (client) ID: 3a3239b8-d164-4d82-9195-cee90e9bf71e
+
+
+Object ID: 4a8c3c46-74f3-4077-a156-0dd1d39ad790
+
+
+Directory (tenant) ID: b24cf338-cafd-4507-89eb-8501db312932

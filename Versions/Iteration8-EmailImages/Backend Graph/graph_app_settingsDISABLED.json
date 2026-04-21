@@ -1,0 +1,6 @@
+{
+  "client_id": "3a3239b8-d164-4d82-9195-cee90e9bf71e",
+  "tenant_id": "b24cf338-cafd-4507-89eb-8501db312932",
+  "authority": "https://login.microsoftonline.com/b24cf338-cafd-4507-89eb-8501db312932",
+  "scopes": ["User.Read", "Mail.ReadWrite"]
+}

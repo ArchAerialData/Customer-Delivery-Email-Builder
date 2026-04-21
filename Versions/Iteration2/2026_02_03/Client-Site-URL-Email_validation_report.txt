@@ -1,0 +1,36 @@
+SUMMARY
+rows: 130
+dropbox_missing: 20
+dropbox_link_mismatch: 4
+dropbox_ambiguous: 0
+contacts_missing: 2
+contacts_email_mismatch: 0
+contacts_ambiguous: 5
+
+MISMATCHES (row, client, site, issue)
+4	Alston Construction	610 Business District	dropbox_missing
+5	Alston Construction	Jolene	dropbox_missing
+6	Alston Construction	Lovett Garland Kings Rd	dropbox_missing
+7	Alston Construction	Mahogany Point 3	dropbox_missing
+8	Alston Construction	Project Spring	dropbox_missing
+9	Alston Construction	TFC	dropbox_missing
+10	Alston Construction	Twinwood	dropbox_missing
+12	ARCO National Construction	The Reserves at Eagle Point	dropbox_missing
+13	Bellows Construction	EOG Resources Building 3	dropbox_missing
+14	Bellows Construction	EOG Resources Phase 3 Expansion	dropbox_missing
+43	Corvus Construction	Market Street Channelview	dropbox_missing
+48	Embrey Partners	Leetsdale	dropbox_missing
+49	Embrey Partners	Mineral Avenue	dropbox_missing
+50	Embrey Partners	Navajo & Oxford	dropbox_missing
+59	KMA	North and South Greens Bayou	dropbox_missing
+62	Northstar	Byron Nelson HS	dropbox_link_mismatch
+63	Northstar	Celina ES - Green Meadows	dropbox_link_mismatch
+75	Schwob	Averitt Express OKC	dropbox_link_mismatch
+77	Schwob	Inland Truck Parts Facility	dropbox_link_mismatch
+88	Skiles Group	Olney Hamilton Hospital	dropbox_missing
+89	Skiles Group	THR Midlothian	dropbox_missing
+94	Spring Valley	Juliette Fowler Demo & Reno	contacts_missing
+98	Spring Valley	Northway Church Sanctuary	contacts_missing
+106	Sunland Construction	Sempra LAS Facility	dropbox_missing
+124	Weber & Company	Epic West Towne Crossing	dropbox_missing
+125	Weber & Company	Target Little Elm	dropbox_missing

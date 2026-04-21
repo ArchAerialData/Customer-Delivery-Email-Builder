@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Editor settings
+.vscode/
+
+# Historical snapshots and local debug output
+Versions/
+*.log
+
+# Graph auth/config secrets and token cache
+Backend Graph/Authentication.txt
+Backend Graph/graph_app_settings.json
+Backend Graph/graph_app_settingsDISABLED.json
+Backend Graph/.graph_token_cache.json
+
+# Local datasets and business workbooks
+2026_02_03/
+Internal CC Lists.xlsx
+
+# Reference media not needed for runtime
+Replit VS Email Builder Differences.jpg
