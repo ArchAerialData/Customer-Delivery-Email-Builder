@@ -87,3 +87,17 @@ Key logic changes (email_template_gui.py):
 - compose_defaults_to_Commercial_Construction_but_can_switch_to_Oil_&_Gas_data: False -> True
 - media_type_text_embeds_progress_for_standard_modes_and_aerial_for_ROW_documentation: False -> True
 - Doug_signature_spacing_matches_Steven_spacing_across_active_templates: False -> True
+
+# Iteration9.4-Theming -> Iteration10.0-UI Changes&FolderCleanup
+
+Added files: Reference Data/XLSX Workbooks/Client-Site-URL-Email.xlsx, Reference Data/XLSX Workbooks/Internal CC Lists.xlsx, Versions/Iteration10.0-UI Changes&FolderCleanup
+Removed files: None
+Changed files: .gitignore, email_template_gui.py, Versions/CHANGELOG.md
+Key logic changes (email_template_gui.py):
+
+- app_prefers_consolidated_Reference_Data_paths_with_legacy_fallbacks: False -> True
+- master_and_cc_workbooks_load_from_Reference_Data/XLSX_Workbooks: False -> True
+- compose_cc_lists_switch_by_selected_template_folder_sheet: False -> True
+- new_template_folders_auto_create_matching_CC_workbook_sheets: False -> True
+- compose_CC_field_expands_and_collapses_like_master_email_editor: False -> True
+- compose_To_field_expands_and_collapses_like_master_email_editor: False -> True
