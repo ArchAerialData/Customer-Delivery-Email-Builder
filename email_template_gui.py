@@ -272,7 +272,9 @@ class EmailTemplateApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Customer Delivery Email Builder")
-        self.root.geometry("1215x927")
+        self.root.geometry("1480x840")
+        self.root.minsize(1180, 700)
+        self.root.resizable(True, True)
 
         self.master_data = []
         self.dropbox_data = []
@@ -793,8 +795,6 @@ class EmailTemplateApp:
             "cc": self.cc_tab,
             "about": self.about_tab,
         }
-        for frame in self.tabs.values():
-            frame.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         self.nav_buttons = {}
         nav_specs = [
@@ -1181,17 +1181,28 @@ class EmailTemplateApp:
         tree.column("email", width=280)
         tree.column("link", width=330)
         tree.column("procore", width=260)
+        tree.column("client", stretch=True)
+        tree.column("site", stretch=True)
+        tree.column("email", stretch=True)
+        tree.column("link", stretch=True)
+        tree.column("procore", stretch=True)
         master_scroll = ttk.Scrollbar(
             tree_frame,
             orient="vertical",
             command=tree.yview,
             style="ClientSites.Vertical.TScrollbar",
         )
-        tree.configure(yscrollcommand=master_scroll.set)
+        master_scroll_x = ttk.Scrollbar(
+            tree_frame,
+            orient="horizontal",
+            command=tree.xview,
+        )
+        tree.configure(yscrollcommand=master_scroll.set, xscrollcommand=master_scroll_x.set)
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
         tree.grid(row=0, column=0, sticky="nsew")
         master_scroll.grid(row=0, column=1, sticky="ns")
+        master_scroll_x.grid(row=1, column=0, sticky="ew")
         tree.bind("<<TreeviewSelect>>", lambda _e, sheet=sheet_name: self._load_master_selection(sheet))
 
         form = ttk.Frame(frame, style="Panel.TFrame")
@@ -1209,8 +1220,8 @@ class EmailTemplateApp:
         link_var = tk.StringVar()
         procore_var = tk.StringVar()
 
-        ttk.Entry(form, textvariable=client_var, width=26).grid(row=1, column=0, sticky="w", padx=(0, 10))
-        ttk.Entry(form, textvariable=site_var, width=32).grid(row=1, column=1, sticky="w", padx=(0, 10))
+        ttk.Entry(form, textvariable=client_var, width=26).grid(row=1, column=0, sticky="ew", padx=(0, 10))
+        ttk.Entry(form, textvariable=site_var, width=32).grid(row=1, column=1, sticky="ew", padx=(0, 10))
         email_frame = ttk.Frame(form, style="Panel.TFrame")
         email_frame.grid(row=1, column=2, sticky="nsew", padx=(0, 10))
         email_text = tk.Text(email_frame, width=40, height=1, wrap="word")
@@ -1228,9 +1239,13 @@ class EmailTemplateApp:
         email_text.bind("<FocusOut>", lambda _e, sheet=sheet_name: self._collapse_master_email_editor(sheet))
         email_text.bind("<Control-v>", lambda e, sheet=sheet_name: self._paste_master_email_list(e, sheet))
         email_text.bind("<<Paste>>", lambda e, sheet=sheet_name: self._paste_master_email_list(e, sheet))
-        ttk.Entry(form, textvariable=link_var, width=40).grid(row=1, column=3, sticky="w", padx=(0, 10))
-        ttk.Entry(form, textvariable=procore_var, width=34).grid(row=1, column=4, sticky="w")
-        form.grid_columnconfigure(2, weight=1)
+        ttk.Entry(form, textvariable=link_var, width=40).grid(row=1, column=3, sticky="ew", padx=(0, 10))
+        ttk.Entry(form, textvariable=procore_var, width=34).grid(row=1, column=4, sticky="ew")
+        form.grid_columnconfigure(0, weight=1)
+        form.grid_columnconfigure(1, weight=1)
+        form.grid_columnconfigure(2, weight=2)
+        form.grid_columnconfigure(3, weight=2)
+        form.grid_columnconfigure(4, weight=2)
 
         btns = ttk.Frame(frame, style="Panel.TFrame")
         btns.pack(fill="x", pady=4)
@@ -1317,7 +1332,7 @@ class EmailTemplateApp:
 
         ttk.Label(
             frame,
-            text="Created on: February 4th, 2026\nBy: Steven McLaren, Data Technician",
+            text="Ver 10.0\nCreated on: February 4th, 2026\nBy: Steven McLaren, Data Technician",
             anchor="center",
             justify="center",
             style="CardTitle.TLabel",
@@ -1327,7 +1342,12 @@ class EmailTemplateApp:
         frame = self.tabs.get(tab_name)
         if not frame:
             return
-        frame.tkraise()
+        for name, tab_frame in self.tabs.items():
+            if name == tab_name:
+                tab_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+                tab_frame.lift()
+            else:
+                tab_frame.place_forget()
         for name, button in self.nav_buttons.items():
             button.configure(style="ActiveNav.TButton" if name == tab_name else "Nav.TButton")
 
