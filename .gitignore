@@ -22,3 +22,7 @@ Reference Data/2026_02_03/
 build/
 dist/
 *.spec
+
+# Local raw python run files
+Run Email Builder.bat
+Run Email Builder.vbs
