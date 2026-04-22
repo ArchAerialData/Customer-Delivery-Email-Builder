@@ -26,7 +26,14 @@ try:
 except Exception:  # pragma: no cover
     win32 = None
 
-BASE_DIR = Path(__file__).resolve().parent
+def _app_base_dir() -> Path:
+    """Return the folder that should hold app resources at runtime."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+BASE_DIR = _app_base_dir()
 
 
 def _resource_path(*parts: str) -> Path:

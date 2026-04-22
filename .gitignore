@@ -17,3 +17,8 @@ env/
 # Graph auth/config secrets and token cache
 Reference Data/Backend Graph/
 Reference Data/2026_02_03/
+
+# Build outputs
+build/
+dist/
+*.spec
