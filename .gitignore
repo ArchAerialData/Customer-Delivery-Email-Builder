@@ -23,6 +23,3 @@ build/
 dist/
 *.spec
 
-# Local raw python run files
-Run Email Builder.bat
-Run Email Builder.vbs
