@@ -1165,113 +1165,42 @@ class EmailTemplateApp:
 
         tree = ttk.Treeview(
             tree_frame,
-            columns=("client", "site", "email", "link", "procore"),
+            columns=("client", "site"),
             show="headings",
         )
         tree.heading("client", text="Client")
         tree.heading("site", text="Site")
-        tree.heading("email", text="Operations Contact Emails")
-        tree.heading("link", text="Customer Dropbox URL")
-        tree.heading("procore", text="Procore")
-        tree.column("client", width=180)
-        tree.column("site", width=210)
-        tree.column("email", width=280)
-        tree.column("link", width=330)
-        tree.column("procore", width=260)
+        tree.column("client", width=340, anchor="w")
+        tree.column("site", width=440, anchor="w")
         tree.column("client", stretch=True)
         tree.column("site", stretch=True)
-        tree.column("email", stretch=True)
-        tree.column("link", stretch=True)
-        tree.column("procore", stretch=True)
         master_scroll = ttk.Scrollbar(
             tree_frame,
             orient="vertical",
             command=tree.yview,
             style="ClientSites.Vertical.TScrollbar",
         )
-        master_scroll_x = ttk.Scrollbar(
-            tree_frame,
-            orient="horizontal",
-            command=tree.xview,
-        )
-        tree.configure(yscrollcommand=master_scroll.set, xscrollcommand=master_scroll_x.set)
+        tree.configure(yscrollcommand=master_scroll.set)
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
         tree.grid(row=0, column=0, sticky="nsew")
         master_scroll.grid(row=0, column=1, sticky="ns")
-        master_scroll_x.grid(row=1, column=0, sticky="ew")
-        tree.bind("<<TreeviewSelect>>", lambda _e, sheet=sheet_name: self._load_master_selection(sheet))
-
-        form = ttk.Frame(frame, style="Panel.TFrame")
-        form.pack(fill="x", pady=10)
-
-        ttk.Label(form, text="Client", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(form, text="Site", style="SectionTitle.TLabel").grid(row=0, column=1, sticky="w")
-        ttk.Label(form, text="Operations Contact Emails", style="SectionTitle.TLabel").grid(row=0, column=2, sticky="w")
-        ttk.Label(form, text="Customer Dropbox URL", style="SectionTitle.TLabel").grid(row=0, column=3, sticky="w")
-        ttk.Label(form, text="Procore", style="SectionTitle.TLabel").grid(row=0, column=4, sticky="w")
-
-        client_var = tk.StringVar()
-        site_var = tk.StringVar()
-        email_var = tk.StringVar()
-        link_var = tk.StringVar()
-        procore_var = tk.StringVar()
-
-        ttk.Entry(form, textvariable=client_var, width=26).grid(row=1, column=0, sticky="ew", padx=(0, 10))
-        ttk.Entry(form, textvariable=site_var, width=32).grid(row=1, column=1, sticky="ew", padx=(0, 10))
-        email_frame = ttk.Frame(form, style="Panel.TFrame")
-        email_frame.grid(row=1, column=2, sticky="nsew", padx=(0, 10))
-        email_text = tk.Text(email_frame, width=40, height=1, wrap="word")
-        email_scroll = ttk.Scrollbar(
-            email_frame,
-            orient="vertical",
-            command=email_text.yview,
-        )
-        email_text.configure(yscrollcommand=email_scroll.set)
-        email_text.pack(side="left", fill="both", expand=True)
-        email_scroll.pack(side="right", fill="y")
-        self._style_text_widget(email_text)
-        email_scroll.pack_forget()
-        email_text.bind("<FocusIn>", lambda _e, sheet=sheet_name: self._expand_master_email_editor(sheet))
-        email_text.bind("<FocusOut>", lambda _e, sheet=sheet_name: self._collapse_master_email_editor(sheet))
-        email_text.bind("<Control-v>", lambda e, sheet=sheet_name: self._paste_master_email_list(e, sheet))
-        email_text.bind("<<Paste>>", lambda e, sheet=sheet_name: self._paste_master_email_list(e, sheet))
-        ttk.Entry(form, textvariable=link_var, width=40).grid(row=1, column=3, sticky="ew", padx=(0, 10))
-        ttk.Entry(form, textvariable=procore_var, width=34).grid(row=1, column=4, sticky="ew")
-        form.grid_columnconfigure(0, weight=1)
-        form.grid_columnconfigure(1, weight=1)
-        form.grid_columnconfigure(2, weight=2)
-        form.grid_columnconfigure(3, weight=2)
-        form.grid_columnconfigure(4, weight=2)
+        tree.bind("<Double-1>", lambda _e, sheet=sheet_name: self._update_master_entry(sheet))
 
         btns = ttk.Frame(frame, style="Panel.TFrame")
         btns.pack(fill="x", pady=4)
-        ttk.Button(btns, text="Add", style="Accent.TButton", command=lambda sheet=sheet_name: self._add_master_entry(sheet)).pack(side="left", padx=(0, 6))
-        ttk.Button(btns, text="Update", command=lambda sheet=sheet_name: self._update_master_entry(sheet)).pack(side="left", padx=(0, 6))
+        ttk.Button(btns, text="Add New", style="Accent.TButton", command=lambda sheet=sheet_name: self._add_master_entry(sheet)).pack(side="left", padx=(0, 6))
+        ttk.Button(btns, text="Edit", command=lambda sheet=sheet_name: self._update_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Delete", command=lambda sheet=sheet_name: self._delete_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Reload", command=lambda sheet=sheet_name: self._reload_master_tab(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Undo Last Change", command=self._undo_last_change).pack(side="left")
 
         self.client_site_tabs[sheet_name] = {
             "tree": tree,
-            "client_var": client_var,
-            "site_var": site_var,
-            "email_var": email_var,
-            "link_var": link_var,
-            "procore_var": procore_var,
-            "email_text": email_text,
-            "email_scroll": email_scroll,
         }
 
         if sheet_name == MASTER_SHEET:
             self.master_tree = tree
-            self.master_client_var = client_var
-            self.master_site_var = site_var
-            self.master_email_var = email_var
-            self.master_link_var = link_var
-            self.master_procore_var = procore_var
-            self.master_email_text = email_text
-            self.master_email_scroll = email_scroll
 
         self._refresh_master_tree(sheet_name)
 
@@ -1633,7 +1562,11 @@ class EmailTemplateApp:
 
     def _reload_master_tab(self, sheet_name: str = MASTER_SHEET):
         # Reload only the requested client-sites tab data
-        self._reload_master_data(sheet_name=sheet_name, refresh_clients=False, refresh_master_tree=True)
+        self._reload_master_data(
+            sheet_name=sheet_name,
+            refresh_clients=(sheet_name == self.compose_sheet_name),
+            refresh_master_tree=True,
+        )
         self._reset_master_form(sheet_name)
 
     def _reload_cc_tab(self):
@@ -1705,11 +1638,6 @@ class EmailTemplateApp:
         widgets = self.client_site_tabs.get(sheet_name)
         if not widgets:
             return
-        widgets["client_var"].set("")
-        widgets["site_var"].set("")
-        self._set_master_email_text("", sheet_name)
-        widgets["link_var"].set("")
-        widgets["procore_var"].set("")
         tree = widgets["tree"]
         tree.selection_remove(tree.selection())
 
@@ -1735,42 +1663,6 @@ class EmailTemplateApp:
         self.date_var.set(format_date(date_obj))
         self._update_email_preview()
 
-    def _get_master_email_text(self, sheet_name: str = MASTER_SHEET) -> str:
-        widgets = self.client_site_tabs.get(sheet_name)
-        if not widgets:
-            return ""
-        email_text = widgets.get("email_text")
-        if not email_text:
-            return widgets["email_var"].get()
-        return email_text.get("1.0", "end-1c")
-
-    def _set_master_email_text(self, value: str, sheet_name: str = MASTER_SHEET):
-        normalized = normalize_email_list(value)
-        widgets = self.client_site_tabs.get(sheet_name)
-        if not widgets:
-            return
-        widgets["email_var"].set(normalized)
-        email_text = widgets.get("email_text")
-        if email_text:
-            email_text.delete("1.0", "end")
-            if normalized:
-                email_text.insert("1.0", normalized)
-
-    def _expand_master_email_editor(self, sheet_name: str = MASTER_SHEET, _event=None):
-        widgets = self.client_site_tabs.get(sheet_name)
-        if not widgets:
-            return
-        widgets["email_text"].configure(height=4)
-        widgets["email_scroll"].pack(side="right", fill="y")
-
-    def _collapse_master_email_editor(self, sheet_name: str = MASTER_SHEET, _event=None):
-        widgets = self.client_site_tabs.get(sheet_name)
-        if not widgets:
-            return
-        self._set_master_email_text(self._get_master_email_text(sheet_name), sheet_name)
-        widgets["email_text"].configure(height=1)
-        widgets["email_scroll"].pack_forget()
-
     def _paste_email_list(self, event, entry, variable):
         try:
             raw = self.root.clipboard_get()
@@ -1783,23 +1675,6 @@ class EmailTemplateApp:
 
         entry.insert("insert", normalized)
         variable.set(normalize_email_list(variable.get()))
-        return "break"
-
-    def _paste_master_email_list(self, event, sheet_name: str = MASTER_SHEET):
-        try:
-            raw = self.root.clipboard_get()
-        except tk.TclError:
-            return None
-
-        normalized = normalize_email_list(raw)
-        if not normalized:
-            return "break"
-
-        widgets = self.client_site_tabs.get(sheet_name)
-        if not widgets:
-            return "break"
-        widgets["email_text"].insert("insert", normalized)
-        self._set_master_email_text(self._get_master_email_text(sheet_name), sheet_name)
         return "break"
 
     def _get_compose_cc_text(self) -> str:
@@ -2139,7 +2014,7 @@ class EmailTemplateApp:
                 "",
                 "end",
                 iid=str(row["row"]),
-                values=(row["client"], row["site"], row["email"], row["link"], row.get("procore", "")),
+                values=(row["client"], row["site"]),
             )
 
     def _load_dropbox_selection(self):
@@ -2161,50 +2036,10 @@ class EmailTemplateApp:
         selected = widgets["tree"].selection()
         if not selected:
             return
-        row_id = int(selected[0])
-        row = next((r for r in self.sheet_data.get(sheet_name, []) if r["row"] == row_id), None)
-        if not row:
-            return
-        widgets["client_var"].set(row["client"])
-        widgets["site_var"].set(row["site"])
-        self._set_master_email_text(row["email"], sheet_name)
-        widgets["link_var"].set(row["link"])
-        widgets["procore_var"].set(row.get("procore", ""))
+        self._update_master_entry(sheet_name)
 
     def _add_master_entry(self, sheet_name: str = MASTER_SHEET):
-        widgets = self.client_site_tabs.get(sheet_name)
-        if not widgets:
-            return
-        client = widgets["client_var"].get().strip()
-        site = widgets["site_var"].get().strip()
-        email = normalize_email_list(self._get_master_email_text(sheet_name))
-        link = widgets["link_var"].get().strip()
-        procore = widgets["procore_var"].get().strip()
-        if not client:
-            messagebox.showwarning("Missing Data", "Client is required.")
-            return
-        try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = self._get_or_create_sheet(wb, sheet_name)
-            ws.append(
-                self._build_master_row(
-                    ws,
-                    {
-                        "client": client,
-                        "project name": site,
-                        "dropbox urls": link,
-                        "operations contact email": email,
-                        "procore": procore,
-                    },
-                )
-            )
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet(sheet_name)
-            self._reload_master_tab(sheet_name)
-        except Exception as exc:
-            messagebox.showerror("Master Data Error", f"Failed to add entry: {exc}")
+        self._open_master_entry_window(sheet_name)
 
     def _update_master_entry(self, sheet_name: str = MASTER_SHEET):
         widgets = self.client_site_tabs.get(sheet_name)
@@ -2212,30 +2047,139 @@ class EmailTemplateApp:
             return
         selected = widgets["tree"].selection()
         if not selected:
-            messagebox.showwarning("Select Row", "Choose a row to update.")
+            messagebox.showwarning("Select Row", "Choose a row to edit.")
             return
         row_id = int(selected[0])
-        client = widgets["client_var"].get().strip()
-        site = widgets["site_var"].get().strip()
-        email = normalize_email_list(self._get_master_email_text(sheet_name))
-        link = widgets["link_var"].get().strip()
-        procore = widgets["procore_var"].get().strip()
+        row = next((r for r in self.sheet_data.get(sheet_name, []) if r["row"] == row_id), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
+        self._open_master_entry_window(sheet_name, row)
+
+    def _open_master_entry_window(self, sheet_name: str = MASTER_SHEET, row: dict | None = None):
+        is_edit = row is not None
+        title = "Edit Client Data" if is_edit else "Add New Client Data"
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("720x520")
+        dialog.minsize(620, 460)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.configure(bg=self.colors["bg"])
+
+        shell = ttk.Frame(dialog, style="Panel.TFrame")
+        shell.pack(fill="both", expand=True, padx=18, pady=18)
+        shell.grid_columnconfigure(1, weight=1)
+        shell.grid_rowconfigure(2, weight=1)
+
+        ttk.Label(shell, text="Client", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        client_var = tk.StringVar(value=row["client"] if row else "")
+        client_entry = ttk.Entry(shell, textvariable=client_var)
+        client_entry.grid(row=0, column=1, sticky="ew", pady=(0, 10))
+
+        ttk.Label(shell, text="Site", style="SectionTitle.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        site_var = tk.StringVar(value=row["site"] if row else "")
+        ttk.Entry(shell, textvariable=site_var).grid(row=1, column=1, sticky="ew", pady=(0, 10))
+
+        ttk.Label(shell, text="Operations Contact Emails", style="SectionTitle.TLabel").grid(row=2, column=0, sticky="nw", padx=(0, 12), pady=(0, 10))
+        email_frame = ttk.Frame(shell, style="Panel.TFrame")
+        email_frame.grid(row=2, column=1, sticky="nsew", pady=(0, 10))
+        email_frame.grid_rowconfigure(0, weight=1)
+        email_frame.grid_columnconfigure(0, weight=1)
+        email_text = tk.Text(email_frame, height=7, wrap="word")
+        email_scroll = ttk.Scrollbar(email_frame, orient="vertical", command=email_text.yview)
+        email_text.configure(yscrollcommand=email_scroll.set)
+        email_text.grid(row=0, column=0, sticky="nsew")
+        email_scroll.grid(row=0, column=1, sticky="ns")
+        self._style_text_widget(email_text)
+        if row and row.get("email"):
+            email_text.insert("1.0", row["email"])
+
+        def paste_email_list(event):
+            try:
+                raw = dialog.clipboard_get()
+            except tk.TclError:
+                return None
+            normalized = normalize_email_list(raw)
+            if not normalized:
+                return "break"
+            email_text.insert("insert", normalized)
+            return "break"
+
+        email_text.bind("<Control-v>", paste_email_list)
+        email_text.bind("<<Paste>>", paste_email_list)
+
+        ttk.Label(shell, text="Customer Dropbox URL", style="SectionTitle.TLabel").grid(row=3, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        link_var = tk.StringVar(value=row["link"] if row else "")
+        ttk.Entry(shell, textvariable=link_var).grid(row=3, column=1, sticky="ew", pady=(0, 10))
+
+        ttk.Label(shell, text="Procore", style="SectionTitle.TLabel").grid(row=4, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        procore_var = tk.StringVar(value=row.get("procore", "") if row else "")
+        ttk.Entry(shell, textvariable=procore_var).grid(row=4, column=1, sticky="ew", pady=(0, 10))
+
+        btns = ttk.Frame(shell, style="Panel.TFrame")
+        btns.grid(row=5, column=0, columnspan=2, sticky="e", pady=(8, 0))
+
+        def save():
+            values = {
+                "client": client_var.get().strip(),
+                "site": site_var.get().strip(),
+                "email": normalize_email_list(email_text.get("1.0", "end-1c")),
+                "link": link_var.get().strip(),
+                "procore": procore_var.get().strip(),
+            }
+            if not values["client"]:
+                messagebox.showwarning("Missing Data", "Client is required.", parent=dialog)
+                return
+            try:
+                self._save_master_entry(sheet_name, values, row["row"] if row else None)
+            except Exception as exc:
+                messagebox.showerror("Master Data Error", f"Failed to save entry: {exc}", parent=dialog)
+                return
+            dialog.destroy()
+
+        ttk.Button(btns, text="Cancel", command=dialog.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(btns, text="Save", style="Accent.TButton", command=save).pack(side="right")
+        dialog.bind("<Escape>", lambda _e: dialog.destroy())
+        dialog.bind("<Control-s>", lambda _e: save())
+        client_entry.focus_set()
+        dialog.wait_window()
+
+    def _save_master_entry(self, sheet_name: str, values: dict, row_id: int | None = None):
         try:
             self._record_undo(MASTER_FILE)
             wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, sheet_name)]
-            col_map, _ = self._master_column_map(ws, ensure=True)
-            ws.cell(row=row_id, column=col_map["client"], value=client)
-            ws.cell(row=row_id, column=col_map["project name"], value=site)
-            ws.cell(row=row_id, column=col_map["dropbox urls"], value=link)
-            ws.cell(row=row_id, column=col_map["operations contact email"], value=email)
-            ws.cell(row=row_id, column=col_map["procore"], value=procore)
+            if row_id is None:
+                ws = self._get_or_create_sheet(wb, sheet_name)
+                ws.append(
+                    self._build_master_row(
+                        ws,
+                        {
+                            "client": values["client"],
+                            "project name": values["site"],
+                            "dropbox urls": values["link"],
+                            "operations contact email": values["email"],
+                            "procore": values["procore"],
+                        },
+                    )
+                )
+            else:
+                ws = wb[self._resolve_sheet_name(wb, sheet_name)]
+                col_map, _ = self._master_column_map(ws, ensure=True)
+                ws.cell(row=row_id, column=col_map["client"], value=values["client"])
+                ws.cell(row=row_id, column=col_map["project name"], value=values["site"])
+                ws.cell(row=row_id, column=col_map["dropbox urls"], value=values["link"])
+                ws.cell(row=row_id, column=col_map["operations contact email"], value=values["email"])
+                ws.cell(row=row_id, column=col_map["procore"], value=values["procore"])
             wb.save(MASTER_FILE)
             wb.close()
             self._sort_master_sheet(sheet_name)
             self._reload_master_tab(sheet_name)
-        except Exception as exc:
-            messagebox.showerror("Master Data Error", f"Failed to update entry: {exc}")
+        finally:
+            try:
+                wb.close()
+            except Exception:
+                pass
 
     def _delete_master_entry(self, sheet_name: str = MASTER_SHEET):
         widgets = self.client_site_tabs.get(sheet_name)
@@ -2415,7 +2359,7 @@ class EmailTemplateApp:
             self._sync_primary_master_views()
         if refresh_master_tree:
             self._refresh_master_tree(sheet_name)
-        if refresh_clients and sheet_name == MASTER_SHEET:
+        if refresh_clients:
             self._refresh_clients()
 
 
