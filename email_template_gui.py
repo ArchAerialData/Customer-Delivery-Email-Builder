@@ -770,16 +770,6 @@ class EmailTemplateApp:
             padx=18,
             pady=14,
         ).pack(side="left")
-        tk.Label(
-            header,
-            text="Local",
-            bg=self.colors["primary"],
-            fg=self.colors["text"],
-            font=("Segoe UI Semibold", 11),
-            padx=12,
-            pady=6,
-        ).pack(side="right", padx=18, pady=10)
-
         tab_container = ttk.Frame(content)
         tab_container.grid(row=1, column=0, sticky="nsew")
 
