@@ -156,6 +156,7 @@ def _normalize_key(value):
 
 
 EMAIL_ADDRESS_RE = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
+MOUSE_WHEEL_LINES = 4
 
 
 def _sheet_aliases(sheet_name: str):
@@ -999,6 +1000,7 @@ class EmailTemplateApp:
             relief="flat",
             borderwidth=1,
         )
+        self._bind_mousewheel_lines(widget)
 
     def _style_listbox_widget(self, widget):
         widget.configure(
@@ -1011,6 +1013,28 @@ class EmailTemplateApp:
             relief="flat",
             borderwidth=1,
         )
+        self._bind_mousewheel_lines(widget)
+
+    def _bind_mousewheel_lines(self, widget):
+        widget.bind("<MouseWheel>", self._scroll_mousewheel_lines, add="+")
+        widget.bind("<Button-4>", self._scroll_mousewheel_lines, add="+")
+        widget.bind("<Button-5>", self._scroll_mousewheel_lines, add="+")
+
+    def _scroll_mousewheel_lines(self, event):
+        if getattr(event, "num", None) == 4:
+            direction = -1
+            steps = 1
+        elif getattr(event, "num", None) == 5:
+            direction = 1
+            steps = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return None
+            direction = -1 if delta > 0 else 1
+            steps = max(1, abs(delta) // 120)
+        event.widget.yview_scroll(direction * MOUSE_WHEEL_LINES * steps, "units")
+        return "break"
 
 
     def _build_compose_tab(self):
@@ -1185,6 +1209,7 @@ class EmailTemplateApp:
         tree_frame.columnconfigure(0, weight=1)
         tree.grid(row=0, column=0, sticky="nsew")
         master_scroll.grid(row=0, column=1, sticky="ns")
+        self._bind_mousewheel_lines(tree)
         tree.bind("<Double-1>", lambda _e, sheet=sheet_name: self._update_master_entry(sheet))
 
         btns = ttk.Frame(frame, style="Panel.TFrame")
