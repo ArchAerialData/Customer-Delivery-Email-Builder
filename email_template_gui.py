@@ -56,6 +56,7 @@ if not MASTER_FILE.exists():
 MASTER_SHEET = "Construction"
 LEGACY_MASTER_SHEET = "ABCD"
 OIL_GAS_SHEET = "Oil & Gas"
+COMPLETED_SHEET = "Completed Projects"
 CC_LISTS_FILE = _resource_path("XLSX Workbooks", "Internal CC Lists.xlsx")
 if not CC_LISTS_FILE.exists():
     CC_LISTS_FILE = _resource_path("Internal CC Lists.xlsx")
@@ -399,6 +400,15 @@ class EmailTemplateApp:
         resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=True)
         if resolved_sheet:
             ws = wb[resolved_sheet]
+            if not any(cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))):
+                headers = list(MASTER_HEADERS.values())
+                source_sheet_name = self._resolve_sheet_name(wb, MASTER_SHEET, allow_missing=True)
+                if source_sheet_name:
+                    source_headers = [cell.value for cell in next(wb[source_sheet_name].iter_rows(min_row=1, max_row=1))]
+                    if any(source_headers):
+                        headers = source_headers
+                for col_idx, header in enumerate(headers, start=1):
+                    ws.cell(row=1, column=col_idx, value=header)
             self._master_column_map(ws, ensure=True)
             return ws
 
@@ -447,12 +457,15 @@ class EmailTemplateApp:
             return
         wb = openpyxl.load_workbook(MASTER_FILE)
         changed = False
-        for sheet_name in (MASTER_SHEET, OIL_GAS_SHEET):
+        for sheet_name in (MASTER_SHEET, OIL_GAS_SHEET, COMPLETED_SHEET):
             resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=True)
             if not resolved_sheet:
                 continue
-            _, sheet_changed = self._master_column_map(wb[resolved_sheet], ensure=True)
-            changed = changed or sheet_changed
+            headers_before = [cell.value for cell in next(wb[resolved_sheet].iter_rows(min_row=1, max_row=1))]
+            ws = self._get_or_create_sheet(wb, sheet_name)
+            _, sheet_changed = self._master_column_map(ws, ensure=True)
+            headers_after = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+            changed = changed or sheet_changed or (not any(headers_before) and any(headers_after))
         if changed:
             wb.save(MASTER_FILE)
         wb.close()
@@ -604,7 +617,7 @@ class EmailTemplateApp:
 
     def _sort_master_sheet(self, sheet_name: str = MASTER_SHEET):
         wb = openpyxl.load_workbook(MASTER_FILE)
-        resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=(sheet_name == OIL_GAS_SHEET))
+        resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=(sheet_name in (OIL_GAS_SHEET, COMPLETED_SHEET)))
         if resolved_sheet is None:
             wb.close()
             return
@@ -1218,7 +1231,8 @@ class EmailTemplateApp:
         ttk.Button(btns, text="Edit", command=lambda sheet=sheet_name: self._update_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Delete", command=lambda sheet=sheet_name: self._delete_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Reload", command=lambda sheet=sheet_name: self._reload_master_tab(sheet)).pack(side="left", padx=(0, 6))
-        ttk.Button(btns, text="Undo Last Change", command=self._undo_last_change).pack(side="left")
+        ttk.Button(btns, text="Undo Last Change", command=self._undo_last_change).pack(side="left", padx=(0, 6))
+        ttk.Button(btns, text="Move To Completed", command=lambda sheet=sheet_name: self._move_selected_master_entry_to_completed(sheet)).pack(side="left")
 
         self.client_site_tabs[sheet_name] = {
             "tree": tree,
@@ -1255,6 +1269,7 @@ class EmailTemplateApp:
         self.new_cc_list_var = tk.StringVar()
         ttk.Entry(left, textvariable=self.new_cc_list_var, width=28).pack(anchor="w", pady=(0, 6))
         ttk.Button(left, text="Create List", style="Accent.TButton", command=self._create_cc_list).pack(anchor="w", pady=(0, 6))
+        ttk.Button(left, text="Edit List", command=self._edit_cc_list).pack(anchor="w", pady=(0, 6))
         ttk.Button(left, text="Delete List", command=self._delete_cc_list).pack(anchor="w", pady=(0, 6))
         ttk.Button(left, text="Reload", command=self._reload_cc_tab).pack(anchor="w")
 
@@ -1514,6 +1529,110 @@ class EmailTemplateApp:
         self._write_cc_lists()
         self.new_cc_list_var.set("")
         self._reload_cc_lists_data()
+
+    def _parse_cc_email_text(self, raw) -> list[str]:
+        normalized = normalize_email_list(raw)
+        return [email.strip() for email in normalized.split(",") if email.strip()]
+
+    def _edit_cc_list(self):
+        selection = self.cc_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Select List", "Choose a list to edit.")
+            return
+        original_name = self.cc_listbox.get(selection[0])
+        self._open_cc_list_window(original_name)
+
+    def _open_cc_list_window(self, original_name: str):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Edit CC List")
+        dialog.geometry("720x500")
+        dialog.minsize(620, 440)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.configure(bg=self.colors["bg"])
+
+        shell = ttk.Frame(dialog, style="Panel.TFrame")
+        shell.pack(fill="both", expand=True, padx=18, pady=18)
+        shell.grid_columnconfigure(1, weight=1)
+        shell.grid_rowconfigure(1, weight=1)
+
+        ttk.Label(shell, text="List Name", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        name_var = tk.StringVar(value=original_name)
+        name_entry = ttk.Entry(shell, textvariable=name_var)
+        name_entry.grid(row=0, column=1, sticky="ew", pady=(0, 10))
+
+        ttk.Label(shell, text="Emails", style="SectionTitle.TLabel").grid(row=1, column=0, sticky="nw", padx=(0, 12), pady=(0, 10))
+        email_frame = ttk.Frame(shell, style="Panel.TFrame")
+        email_frame.grid(row=1, column=1, sticky="nsew", pady=(0, 10))
+        email_frame.grid_rowconfigure(0, weight=1)
+        email_frame.grid_columnconfigure(0, weight=1)
+        email_text = tk.Text(email_frame, height=10, wrap="word")
+        email_scroll = ttk.Scrollbar(email_frame, orient="vertical", command=email_text.yview)
+        email_text.configure(yscrollcommand=email_scroll.set)
+        email_text.grid(row=0, column=0, sticky="nsew")
+        email_scroll.grid(row=0, column=1, sticky="ns")
+        self._style_text_widget(email_text)
+        email_text.insert("1.0", ", ".join(self.cc_lists.get(original_name, [])))
+
+        def paste_email_list(event):
+            try:
+                raw = dialog.clipboard_get()
+            except tk.TclError:
+                return None
+            normalized = normalize_email_list(raw)
+            if not normalized:
+                return "break"
+            email_text.insert("insert", normalized)
+            return "break"
+
+        email_text.bind("<Control-v>", paste_email_list)
+        email_text.bind("<<Paste>>", paste_email_list)
+
+        btns = ttk.Frame(shell, style="Panel.TFrame")
+        btns.grid(row=2, column=0, columnspan=2, sticky="e", pady=(8, 0))
+
+        def save():
+            new_name = name_var.get().strip()
+            if not new_name:
+                messagebox.showwarning("Missing Data", "List name is required.", parent=dialog)
+                return
+            if new_name != original_name and new_name in self.cc_lists:
+                messagebox.showwarning("Already Exists", "That list already exists.", parent=dialog)
+                return
+            emails = self._parse_cc_email_text(email_text.get("1.0", "end-1c"))
+            updated_lists = {}
+            for list_name, existing_emails in self.cc_lists.items():
+                if list_name == original_name:
+                    updated_lists[new_name] = emails
+                else:
+                    updated_lists[list_name] = existing_emails
+            self.cc_lists = updated_lists
+            try:
+                self._write_cc_lists()
+            except Exception as exc:
+                messagebox.showerror("CC List Error", f"Failed to save list: {exc}", parent=dialog)
+                return
+            dialog.destroy()
+            self._reload_cc_lists_data()
+            self._select_cc_list(new_name)
+
+        ttk.Button(btns, text="Cancel", command=dialog.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(btns, text="Save", style="Accent.TButton", command=save).pack(side="right")
+        dialog.bind("<Escape>", lambda _e: dialog.destroy())
+        dialog.bind("<Control-s>", lambda _e: save())
+        name_entry.focus_set()
+        dialog.wait_window()
+
+    def _select_cc_list(self, list_name: str):
+        if not hasattr(self, "cc_listbox"):
+            return
+        for idx in range(self.cc_listbox.size()):
+            if self.cc_listbox.get(idx) == list_name:
+                self.cc_listbox.selection_clear(0, "end")
+                self.cc_listbox.selection_set(idx)
+                self.cc_listbox.see(idx)
+                self._load_cc_list_selection()
+                return
 
     def _delete_cc_list(self):
         selection = self.cc_listbox.curselection()
@@ -2143,7 +2262,7 @@ class EmailTemplateApp:
         ttk.Entry(shell, textvariable=procore_var).grid(row=4, column=1, sticky="ew", pady=(0, 10))
 
         btns = ttk.Frame(shell, style="Panel.TFrame")
-        btns.grid(row=5, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        btns.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         def save():
             values = {
@@ -2228,6 +2347,47 @@ class EmailTemplateApp:
             self._reload_master_data(sheet_name=sheet_name)
         except Exception as exc:
             messagebox.showerror("Master Data Error", f"Failed to delete entry: {exc}")
+
+    def _move_master_entry_to_completed(self, sheet_name: str, row_id: int):
+        wb = None
+        try:
+            self._record_undo(MASTER_FILE)
+            wb = openpyxl.load_workbook(MASTER_FILE)
+            source_ws = wb[self._resolve_sheet_name(wb, sheet_name)]
+            completed_ws = self._get_or_create_sheet(wb, COMPLETED_SHEET)
+            row_values = [
+                source_ws.cell(row=row_id, column=col_idx).value
+                for col_idx in range(1, source_ws.max_column + 1)
+            ]
+            completed_ws.append(row_values)
+            source_ws.delete_rows(row_id, 1)
+            wb.save(MASTER_FILE)
+            wb.close()
+            self._sort_master_sheet(sheet_name)
+            self._sort_master_sheet(COMPLETED_SHEET)
+            self._reload_master_data(sheet_name=sheet_name, refresh_clients=(sheet_name == self.compose_sheet_name))
+            if hasattr(self, "status_var"):
+                self.status_var.set(f"Moved entry to {COMPLETED_SHEET}.")
+        finally:
+            try:
+                if wb:
+                    wb.close()
+            except Exception:
+                pass
+
+    def _move_selected_master_entry_to_completed(self, sheet_name: str = MASTER_SHEET):
+        widgets = self.client_site_tabs.get(sheet_name)
+        if not widgets:
+            return
+        selected = widgets["tree"].selection()
+        if not selected:
+            messagebox.showwarning("Select Row", "Choose a row to move.")
+            return
+        row_id = int(selected[0])
+        try:
+            self._move_master_entry_to_completed(sheet_name, row_id)
+        except Exception as exc:
+            messagebox.showerror("Master Data Error", f"Failed to move entry: {exc}")
 
     def _add_dropbox_entry(self):
         client = self.db_client_var.get().strip()
