@@ -312,6 +312,7 @@ class EmailTemplateApp:
         self.sheet_data = {
             MASTER_SHEET: self._read_master_data(MASTER_SHEET),
             OIL_GAS_SHEET: self._read_master_data(OIL_GAS_SHEET, allow_missing=True),
+            COMPLETED_SHEET: self._read_master_data(COMPLETED_SHEET, allow_missing=True),
         }
         self._sync_primary_master_views()
         self.template_folder_names = self._read_template_folder_names()
@@ -750,6 +751,7 @@ class EmailTemplateApp:
                 self.status_var.set(f"Undid last change: {path.name}")
             self._reload_master_data(sheet_name=MASTER_SHEET)
             self._reload_master_data(sheet_name=OIL_GAS_SHEET, refresh_clients=False)
+            self._reload_master_data(sheet_name=COMPLETED_SHEET, refresh_clients=False)
             self._reload_cc_lists_data()
         except Exception as exc:
             messagebox.showerror("Undo Error", f"Failed to undo last change: {exc}")
@@ -797,6 +799,7 @@ class EmailTemplateApp:
         self.master_tab = ttk.Frame(tab_container)
         self.oil_gas_tab = ttk.Frame(tab_container)
         self.cc_tab = ttk.Frame(tab_container)
+        self.completed_tab = ttk.Frame(tab_container)
         self.about_tab = ttk.Frame(tab_container)
 
         self.tabs = {
@@ -804,6 +807,7 @@ class EmailTemplateApp:
             "construction": self.master_tab,
             "oil_gas": self.oil_gas_tab,
             "cc": self.cc_tab,
+            "completed": self.completed_tab,
             "about": self.about_tab,
         }
 
@@ -813,6 +817,7 @@ class EmailTemplateApp:
             ("construction", "Construction", top_nav),
             ("oil_gas", "Oil & Gas", top_nav),
             ("cc", "Internal CC Lists", top_nav),
+            ("completed", "Completed", top_nav),
             ("about", "About", bottom_nav),
         ]
         for tab_name, label, parent in nav_specs:
@@ -829,6 +834,7 @@ class EmailTemplateApp:
         self._build_master_tab()
         self._build_oil_gas_tab()
         self._build_cc_tab()
+        self._build_completed_tab()
         self._build_about_tab()
 
         self.status_var = tk.StringVar(value="")
@@ -1191,8 +1197,16 @@ class EmailTemplateApp:
     def _build_oil_gas_tab(self):
         self._build_client_sites_tab(self.oil_gas_tab, OIL_GAS_SHEET)
 
+    def _build_completed_tab(self):
+        self._build_client_sites_tab(self.completed_tab, COMPLETED_SHEET)
+
     def _build_client_sites_tab(self, parent, sheet_name: str):
-        title = "Construction Directory" if sheet_name == MASTER_SHEET else "Oil & Gas Directory"
+        titles = {
+            MASTER_SHEET: "Construction Directory",
+            OIL_GAS_SHEET: "Oil & Gas Directory",
+            COMPLETED_SHEET: "Completed Projects",
+        }
+        title = titles.get(sheet_name, f"{sheet_name} Directory")
         card, frame = self._create_card(parent, title)
         card.pack(fill="both", expand=True, padx=16, pady=16)
 
@@ -1232,7 +1246,8 @@ class EmailTemplateApp:
         ttk.Button(btns, text="Delete", command=lambda sheet=sheet_name: self._delete_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Reload", command=lambda sheet=sheet_name: self._reload_master_tab(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Undo Last Change", command=self._undo_last_change).pack(side="left", padx=(0, 6))
-        ttk.Button(btns, text="Move To Completed", command=lambda sheet=sheet_name: self._move_selected_master_entry_to_completed(sheet)).pack(side="left")
+        if sheet_name != COMPLETED_SHEET:
+            ttk.Button(btns, text="Move To Completed", command=lambda sheet=sheet_name: self._move_selected_master_entry_to_completed(sheet)).pack(side="left")
 
         self.client_site_tabs[sheet_name] = {
             "tree": tree,
@@ -2366,6 +2381,7 @@ class EmailTemplateApp:
             self._sort_master_sheet(sheet_name)
             self._sort_master_sheet(COMPLETED_SHEET)
             self._reload_master_data(sheet_name=sheet_name, refresh_clients=(sheet_name == self.compose_sheet_name))
+            self._reload_master_data(sheet_name=COMPLETED_SHEET, refresh_clients=False)
             if hasattr(self, "status_var"):
                 self.status_var.set(f"Moved entry to {COMPLETED_SHEET}.")
         finally:
@@ -2539,7 +2555,7 @@ class EmailTemplateApp:
             self._sort_master_sheet(sheet_name)
         except Exception:
             pass
-        self.sheet_data[sheet_name] = self._read_master_data(sheet_name, allow_missing=(sheet_name == OIL_GAS_SHEET))
+        self.sheet_data[sheet_name] = self._read_master_data(sheet_name, allow_missing=(sheet_name in (OIL_GAS_SHEET, COMPLETED_SHEET)))
         if sheet_name == MASTER_SHEET:
             self._sync_primary_master_views()
         if refresh_master_tree:
