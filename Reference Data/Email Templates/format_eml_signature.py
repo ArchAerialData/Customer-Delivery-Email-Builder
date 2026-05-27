@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import base64
 import gzip
 import re
@@ -96,19 +95,16 @@ def format_eml_in_place(target_path: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Format .eml files in place by replacing everything after "
-            f'"{ADDRESS_MARKER}" with the hardcoded Arch Aerial signature.'
-        )
-    )
-    parser.add_argument("eml_files", nargs="+", help="One or more .eml files to update in place.")
-    args = parser.parse_args(argv)
+    if not argv:
+        print("Drag and drop one or more .eml files onto this script to format them in place.")
+        input("Press Enter to close...")
+        return 1
 
-    for raw_path in args.eml_files:
+    for raw_path in argv:
         target_path = Path(raw_path).expanduser().resolve()
         format_eml_in_place(target_path)
         print(f"Updated in place: {target_path}")
+    input("Done. Press Enter to close...")
     return 0
 
 
@@ -117,4 +113,5 @@ if __name__ == "__main__":
         raise SystemExit(main(sys.argv[1:]))
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        input("Press Enter to close...")
         raise SystemExit(1)
