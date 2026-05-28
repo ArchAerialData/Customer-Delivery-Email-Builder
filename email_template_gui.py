@@ -1313,7 +1313,7 @@ class EmailTemplateApp:
 
         ttk.Label(
             frame,
-            text="Ver 10.0\nCreated on: February 4th, 2026\nBy: Steven McLaren, Data Technician",
+            text="Created on: February 4th, 2026\nBy: Steven McLaren, Data Technician",
             anchor="center",
             justify="center",
             style="CardTitle.TLabel",
