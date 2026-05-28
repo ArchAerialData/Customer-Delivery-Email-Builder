@@ -29,7 +29,13 @@ except Exception:  # pragma: no cover
 def _app_base_dir() -> Path:
     """Return the folder that should hold app resources at runtime."""
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+        exe_dir = Path(sys.executable).resolve().parent
+        if exe_dir.parent.name.lower() == "dist":
+            # Local builds run from dist\Email Builder, but live data belongs in the project Reference Data folder.
+            project_dir = exe_dir.parent.parent
+            if (project_dir / "Reference Data").exists():
+                return project_dir
+        return exe_dir
     return Path(__file__).resolve().parent
 
 
