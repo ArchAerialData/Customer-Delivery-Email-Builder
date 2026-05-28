@@ -281,7 +281,7 @@ class EmailTemplateApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Customer Delivery Email Builder")
-        self.root.geometry("1480x840")
+        self.root.geometry("1480x900")
         self.root.minsize(1180, 700)
         self.root.resizable(True, True)
 
