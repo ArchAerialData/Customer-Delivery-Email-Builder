@@ -5,7 +5,7 @@ import gzip
 import re
 import sys
 from email import policy
-from email.message import Message
+from email.message import EmailMessage, Message
 from email.parser import BytesParser
 from pathlib import Path
 
@@ -72,6 +72,32 @@ def _set_text_part_content(part: Message, content: str, subtype: str) -> None:
     part.set_content(content, **kwargs)
 
 
+def _header_value(message: Message, name: str) -> str:
+    value = message.get(name, "")
+    return str(value).strip() if value else ""
+
+
+def _best_cte(content: str) -> str:
+    try:
+        content.encode("ascii")
+    except UnicodeEncodeError:
+        return "quoted-printable"
+    return "7bit"
+
+
+def _build_clean_message(source: Message, text_content: str, html_content: str) -> EmailMessage:
+    clean = EmailMessage()
+    subject = _header_value(source, "Subject")
+    if subject:
+        clean["Subject"] = subject
+    clean["To"] = "{to_email}"
+    clean["CC"] = "{cc_email}"
+
+    clean.set_content(text_content, subtype="plain", charset="utf-8", cte=_best_cte(text_content))
+    clean.add_alternative(html_content, subtype="html", charset="utf-8", cte=_best_cte(html_content))
+    return clean
+
+
 def format_eml_in_place(target_path: Path) -> None:
     if not target_path.exists():
         raise FileNotFoundError(f"Target file does not exist: {target_path}")
@@ -84,26 +110,29 @@ def format_eml_in_place(target_path: Path) -> None:
     if html_part is None:
         raise ValueError("Target message does not contain a text/html part.")
     html_intro = _split_html_after_address(html_part.get_content())
-    _set_text_part_content(html_part, html_intro + SIGNATURE_HTML_AFTER_ADDRESS, "html")
+    html_content = html_intro + SIGNATURE_HTML_AFTER_ADDRESS
 
     text_part = _first_part(message, "text/plain")
     if text_part is not None:
         text_intro = _split_text_after_address(text_part.get_content())
-        _set_text_part_content(text_part, text_intro + SIGNATURE_TEXT_AFTER_ADDRESS, "plain")
+        text_content = text_intro + SIGNATURE_TEXT_AFTER_ADDRESS
+    else:
+        text_content = re.sub(r"<[^>]+>", "", html_intro) + SIGNATURE_TEXT_AFTER_ADDRESS
 
-    target_path.write_bytes(message.as_bytes(policy=policy.SMTP))
+    clean_message = _build_clean_message(message, text_content, html_content)
+    target_path.write_bytes(clean_message.as_bytes(policy=policy.SMTP))
 
 
 def main(argv: list[str]) -> int:
     if not argv:
-        print("Drag and drop one or more .eml files onto this script to format them in place.")
+        print("Drag and drop one or more .eml files onto this script to clean them in place.")
         input("Press Enter to close...")
         return 1
 
     for raw_path in argv:
         target_path = Path(raw_path).expanduser().resolve()
         format_eml_in_place(target_path)
-        print(f"Updated in place: {target_path}")
+        print(f"Cleaned in place: {target_path}")
     input("Done. Press Enter to close...")
     return 0
 
