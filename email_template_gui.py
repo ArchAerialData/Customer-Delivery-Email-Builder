@@ -112,6 +112,7 @@ MASTER_HEADERS = {
     "dropbox urls": "Dropbox URLs",
     "operations contact email": "Operations Contact Email",
     "procore": "Procore",
+    "internal urls": "Internal URLs",
 }
 
 
@@ -603,6 +604,9 @@ class EmailTemplateApp:
         procore_idx = col_map.get("procore")
         if procore_idx is not None:
             procore_idx -= 1
+        internal_url_idx = col_map.get("internal urls")
+        if internal_url_idx is not None:
+            internal_url_idx -= 1
         rows = []
         for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             client = _master_cell_value(row, client_idx)
@@ -610,6 +614,7 @@ class EmailTemplateApp:
             link = _master_cell_value(row, link_idx)
             email = _master_cell_value(row, email_idx)
             procore = _master_cell_value(row, procore_idx)
+            internal_url = _master_cell_value(row, internal_url_idx)
             if client:
                 rows.append({
                     "row": idx,
@@ -618,6 +623,7 @@ class EmailTemplateApp:
                     "link": link,
                     "email": normalize_email_list(email),
                     "procore": procore,
+                    "internal_url": internal_url,
                 })
         wb.close()
         return rows
@@ -2120,18 +2126,6 @@ class EmailTemplateApp:
             for addr in cc_list:
                 recipient = mail.Recipients.Add(addr)
                 recipient.Type = 2
-            unresolved = []
-            if not mail.Recipients.ResolveAll():
-                for recipient in mail.Recipients:
-                    if not recipient.Resolved:
-                        unresolved.append(recipient.Name)
-                if unresolved:
-                    messagebox.showwarning(
-                        "Unresolved Recipients",
-                        "These recipients could not be resolved in Outlook:\n"
-                        + "\n".join(unresolved)
-                        + "\n\nPlease verify the addresses before sending.",
-                    )
             mail.Subject = subject
             mail.BodyFormat = 2  # olFormatHTML
             mail.HTMLBody = body_html
@@ -2226,8 +2220,8 @@ class EmailTemplateApp:
         title = "Edit Client Data" if is_edit else "Add New Client Data"
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
-        dialog.geometry("720x520")
-        dialog.minsize(620, 460)
+        dialog.geometry("720x570")
+        dialog.minsize(620, 500)
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.configure(bg=self.colors["bg"])
@@ -2282,8 +2276,12 @@ class EmailTemplateApp:
         procore_var = tk.StringVar(value=row.get("procore", "") if row else "")
         ttk.Entry(shell, textvariable=procore_var).grid(row=4, column=1, sticky="ew", pady=(0, 10))
 
+        ttk.Label(shell, text="Internal Dropbox URL", style="SectionTitle.TLabel").grid(row=5, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        internal_url_var = tk.StringVar(value=row.get("internal_url", "") if row else "")
+        ttk.Entry(shell, textvariable=internal_url_var).grid(row=5, column=1, sticky="ew", pady=(0, 10))
+
         btns = ttk.Frame(shell, style="Panel.TFrame")
-        btns.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        btns.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         def save():
             values = {
@@ -2292,6 +2290,7 @@ class EmailTemplateApp:
                 "email": normalize_email_list(email_text.get("1.0", "end-1c")),
                 "link": link_var.get().strip(),
                 "procore": procore_var.get().strip(),
+                "internal_url": internal_url_var.get().strip(),
             }
             if not values["client"]:
                 messagebox.showwarning("Missing Data", "Client is required.", parent=dialog)
@@ -2325,6 +2324,7 @@ class EmailTemplateApp:
                             "dropbox urls": values["link"],
                             "operations contact email": values["email"],
                             "procore": values["procore"],
+                            "internal urls": values["internal_url"],
                         },
                     )
                 )
@@ -2336,6 +2336,7 @@ class EmailTemplateApp:
                 ws.cell(row=row_id, column=col_map["dropbox urls"], value=values["link"])
                 ws.cell(row=row_id, column=col_map["operations contact email"], value=values["email"])
                 ws.cell(row=row_id, column=col_map["procore"], value=values["procore"])
+                ws.cell(row=row_id, column=col_map["internal urls"], value=values["internal_url"])
             wb.save(MASTER_FILE)
             wb.close()
             self._sort_master_sheet(sheet_name)
