@@ -74,6 +74,7 @@ GRAPH_SETTINGS = GRAPH_DIR / "graph_app_settings.json"
 GRAPH_TOKEN_CACHE = GRAPH_DIR / ".graph_token_cache.json"
 
 logger = logging.getLogger(__name__)
+IS_MACOS = sys.platform == "darwin"
 
 if GRAPH_DIR.exists():
     sys.path.insert(0, str(GRAPH_DIR))
@@ -287,7 +288,7 @@ class CalendarPopup(tk.Toplevel):
 class EmailTemplateApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Customer Delivery Email Builder")
+        self.root.title("Customer Information Editor" if IS_MACOS else "Customer Delivery Email Builder")
         self.root.geometry("1480x900")
         self.root.minsize(1180, 700)
         self.root.resizable(True, True)
@@ -329,6 +330,8 @@ class EmailTemplateApp:
         self.email_templates = self._read_email_templates()
 
     def _init_graph_client(self):
+        if IS_MACOS:
+            return
         if GraphEmailClient is None:
             return
         if not GRAPH_SETTINGS.exists():
@@ -789,9 +792,10 @@ class EmailTemplateApp:
 
         header = tk.Frame(content, bg=self.colors["brand"], highlightbackground=self.colors["border"], highlightthickness=1)
         header.grid(row=0, column=0, sticky="ew")
+        header_title = "Arch Aerial, LLC || Customer Information Editor" if IS_MACOS else "Arch Aerial, LLC || Customer Delivery Email Builder"
         tk.Label(
             header,
-            text="Arch Aerial, LLC || Customer Delivery Email Builder",
+            text=header_title,
             bg=self.colors["brand"],
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 16),
@@ -1171,7 +1175,10 @@ class EmailTemplateApp:
         self.link_entry = ttk.Entry(left, textvariable=self.link_var, width=50)
         self.link_entry.pack(anchor="w", pady=(0, 12))
 
-        ttk.Button(left, text="Create Outlook Draft", style="Accent.TButton", command=self._create_draft).pack(anchor="w", pady=(6, 6))
+        if IS_MACOS:
+            ttk.Button(left, text="Draft Creation Unavailable on macOS", state="disabled").pack(anchor="w", pady=(6, 6))
+        else:
+            ttk.Button(left, text="Create Outlook Draft", style="Accent.TButton", command=self._create_draft).pack(anchor="w", pady=(6, 6))
         ttk.Button(left, text="Reload", command=self._reload_compose_tab).pack(anchor="w")
 
         ttk.Label(right, text="Subject", style="SectionTitle.TLabel").pack(anchor="w")
