@@ -2126,6 +2126,18 @@ class EmailTemplateApp:
             for addr in cc_list:
                 recipient = mail.Recipients.Add(addr)
                 recipient.Type = 2
+            unresolved = []
+            if not mail.Recipients.ResolveAll():
+                for recipient in mail.Recipients:
+                    if not recipient.Resolved:
+                        unresolved.append(recipient.Name)
+                if unresolved:
+                    messagebox.showwarning(
+                        "Unresolved Recipients",
+                        "These recipients could not be resolved in Outlook:\n"
+                        + "\n".join(unresolved)
+                        + "\n\nPlease verify the addresses before sending.",
+                    )
             mail.Subject = subject
             mail.BodyFormat = 2  # olFormatHTML
             mail.HTMLBody = body_html
