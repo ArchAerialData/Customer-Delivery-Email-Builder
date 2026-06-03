@@ -1,0 +1,26 @@
+name: macOS smoke test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python3 -m pip install -r macOS/requirements-macos.txt
+
+      - name: Compile app
+        run: python3 -m py_compile email_template_gui.py
+
+      - name: Import GUI module
+        run: python3 -c "import email_template_gui; print('IS_MACOS =', email_template_gui.IS_MACOS)"
