@@ -72,8 +72,16 @@ EMAIL_TEMPLATES_DIR = _resource_path("Email Templates")
 GRAPH_DIR = _resource_path("Backend Graph")
 GRAPH_SETTINGS = GRAPH_DIR / "graph_app_settings.json"
 GRAPH_TOKEN_CACHE = GRAPH_DIR / ".graph_token_cache.json"
+LOG_DIR = _resource_path("Logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        filename=LOG_DIR / "email_builder.log",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
 
 if GRAPH_DIR.exists():
     sys.path.insert(0, str(GRAPH_DIR))
@@ -2086,6 +2094,30 @@ class EmailTemplateApp:
             inline_attachments=inline_attachments,
         )
 
+    def _sync_outlook_now(self, outlook, mapi=None):
+        if mapi is None:
+            mapi = outlook.GetNamespace("MAPI")
+        try:
+            mapi.Logon("", "", False, False)
+            logger.info("Outlook MAPI logon completed before sync.")
+        except Exception as exc:
+            logger.info("Outlook MAPI logon skipped/failed before sync: %s", exc)
+        try:
+            mapi.SendAndReceive(True)
+            logger.info("Outlook SendAndReceive completed.")
+        except Exception as exc:
+            logger.info("Outlook SendAndReceive failed: %s", exc)
+        try:
+            for sync_obj in mapi.SyncObjects:
+                try:
+                    sync_name = getattr(sync_obj, "Name", "<unnamed>")
+                    sync_obj.Start()
+                    logger.info("Outlook SyncObject started: %s", sync_name)
+                except Exception as exc:
+                    logger.info("Outlook SyncObject failed: %s", exc)
+        except Exception as exc:
+            logger.info("Outlook SyncObjects unavailable: %s", exc)
+
     def _create_draft(self):
         subject = self.subject_var.get().strip()
         try:
@@ -2119,7 +2151,23 @@ class EmailTemplateApp:
 
         try:
             outlook = win32.Dispatch("Outlook.Application")
-            mail = outlook.CreateItem(0)
+            mapi = outlook.GetNamespace("MAPI")
+            try:
+                mapi.Logon("", "", False, False)
+                logger.info("Outlook MAPI logon completed before draft creation.")
+            except Exception as exc:
+                logger.info("Outlook MAPI logon skipped/failed before draft creation: %s", exc)
+            try:
+                drafts_folder = mapi.GetDefaultFolder(16)  # olFolderDrafts
+                mail = drafts_folder.Items.Add("IPM.Note")
+                logger.info(
+                    "Creating Outlook draft in default Drafts folder: folder=%r store=%r",
+                    getattr(drafts_folder, "Name", ""),
+                    getattr(getattr(drafts_folder, "Store", None), "DisplayName", ""),
+                )
+            except Exception as exc:
+                logger.info("Default Drafts folder creation failed; using CreateItem fallback: %s", exc)
+                mail = outlook.CreateItem(0)
             for addr in to_list:
                 recipient = mail.Recipients.Add(addr)
                 recipient.Type = 1
@@ -2161,8 +2209,13 @@ class EmailTemplateApp:
             # Re-apply HTMLBody after inline attachments to help Outlook resolve CIDs
             mail.HTMLBody = body_html
             mail.Save()  # draft in Drafts
+            logger.info(
+                "Saved Outlook draft: entry_id=%r folder=%r",
+                getattr(mail, "EntryID", ""),
+                getattr(getattr(mail, "Parent", None), "Name", ""),
+            )
             try:
-                self._sync_outlook_now(outlook)
+                self._sync_outlook_now(outlook, mapi)
             except Exception:
                 pass
             self._handle_post_draft_procore()

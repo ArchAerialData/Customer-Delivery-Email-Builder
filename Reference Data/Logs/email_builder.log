@@ -20,3 +20,21 @@
 2026-06-01 09:34:06,635 INFO Saved Outlook draft: entry_id='000000007E5019820ED9374C940618766E00B336070016A1B1C67B840A4787596FFB1069B2BB00000000010F000016A1B1C67B840A4787596FFB1069B2BB0001158725B20000' folder='Drafts'
 2026-06-01 09:34:09,917 INFO Creating Outlook draft: subject='Byron Nelson HS - Aerial Progress Photos and Video - May 29th, 2026' to_count=2 cc_count=6
 2026-06-01 09:34:09,953 INFO Saved Outlook draft: entry_id='000000007E5019820ED9374C940618766E00B336070016A1B1C67B840A4787596FFB1069B2BB00000000010F000016A1B1C67B840A4787596FFB1069B2BB0001158725B30000' folder='Drafts'
+2026-06-04 16:46:16,491 INFO Outlook MAPI logon completed before draft creation.
+2026-06-04 16:46:16,512 INFO Creating Outlook draft in default Drafts folder: folder='Drafts' store='smclaren@archaerial.com'
+2026-06-04 16:46:16,594 INFO Saved Outlook draft: entry_id='000000007E5019820ED9374C940618766E00B336070016A1B1C67B840A4787596FFB1069B2BB00000000010F000016A1B1C67B840A4787596FFB1069B2BB0001158725DF0000' folder='Drafts'
+2026-06-04 16:46:16,595 INFO Outlook MAPI logon completed before sync.
+2026-06-04 16:46:16,631 INFO Outlook SendAndReceive completed.
+2026-06-04 16:46:16,643 INFO Outlook SyncObject started: All Accounts
+2026-06-04 16:46:50,111 INFO Outlook MAPI logon completed before draft creation.
+2026-06-04 16:46:50,135 INFO Creating Outlook draft in default Drafts folder: folder='Drafts' store='smclaren@archaerial.com'
+2026-06-04 16:46:50,201 INFO Saved Outlook draft: entry_id='000000007E5019820ED9374C940618766E00B336070016A1B1C67B840A4787596FFB1069B2BB00000000010F000016A1B1C67B840A4787596FFB1069B2BB0001158725E00000' folder='Drafts'
+2026-06-04 16:46:50,201 INFO Outlook MAPI logon completed before sync.
+2026-06-04 16:46:50,236 INFO Outlook SendAndReceive completed.
+2026-06-04 16:46:50,247 INFO Outlook SyncObject started: All Accounts
+2026-06-04 16:47:12,910 INFO Outlook MAPI logon completed before draft creation.
+2026-06-04 16:47:12,931 INFO Creating Outlook draft in default Drafts folder: folder='Drafts' store='smclaren@archaerial.com'
+2026-06-04 16:47:13,015 INFO Saved Outlook draft: entry_id='000000007E5019820ED9374C940618766E00B336070016A1B1C67B840A4787596FFB1069B2BB00000000010F000016A1B1C67B840A4787596FFB1069B2BB0001158725E10000' folder='Drafts'
+2026-06-04 16:47:13,015 INFO Outlook MAPI logon completed before sync.
+2026-06-04 16:47:13,052 INFO Outlook SendAndReceive completed.
+2026-06-04 16:47:13,063 INFO Outlook SyncObject started: All Accounts
