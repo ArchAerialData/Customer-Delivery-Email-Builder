@@ -2,15 +2,13 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: ${{ false }}
     runs-on: windows-latest
 
     steps:

@@ -2,7 +2,11 @@ name: macOS smoke test
 
 on:
   push:
+    branches:
+      - MacOS-Compatibility
   pull_request:
+    branches:
+      - MacOS-Compatibility
   workflow_dispatch:
 
 jobs:
