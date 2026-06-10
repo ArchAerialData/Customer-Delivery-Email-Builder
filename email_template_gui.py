@@ -4,7 +4,9 @@ import mimetypes
 import uuid
 import re
 import sys
+import os
 import logging
+import shutil
 import webbrowser
 from email import policy
 from email.message import EmailMessage
@@ -26,10 +28,54 @@ try:
 except Exception:  # pragma: no cover
     win32 = None
 
+
+APP_NAME = "Email Builder"
+
+
+def _find_bundled_reference_data(exe_dir: Path):
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "Reference Data")
+    candidates.extend([
+        exe_dir / "Reference Data",
+        exe_dir / "_internal" / "Reference Data",
+        exe_dir.parent / "Resources" / "Reference Data",
+    ])
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _copy_missing_tree(source: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for source_path in source.rglob("*"):
+        relative_path = source_path.relative_to(source)
+        destination_path = destination / relative_path
+        if source_path.is_dir():
+            destination_path.mkdir(parents=True, exist_ok=True)
+        elif not destination_path.exists():
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, destination_path)
+
+
+def _macos_app_support_base(exe_dir: Path) -> Path:
+    app_support = Path.home() / "Library" / "Application Support" / APP_NAME
+    bundled_reference_data = _find_bundled_reference_data(exe_dir)
+    if bundled_reference_data:
+        _copy_missing_tree(bundled_reference_data, app_support / "Reference Data")
+    else:
+        app_support.mkdir(parents=True, exist_ok=True)
+    return app_support
+
+
 def _app_base_dir() -> Path:
     """Return the folder that should hold app resources at runtime."""
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
+        if sys.platform == "darwin":
+            return _macos_app_support_base(exe_dir)
         if exe_dir.parent.name.lower() == "dist":
             # Local builds run from dist\Email Builder, but live data belongs in the project Reference Data folder.
             project_dir = exe_dir.parent.parent
@@ -2590,10 +2636,80 @@ class EmailTemplateApp:
             self._refresh_clients()
 
 
-if __name__ == "__main__":
+def _load_workbook_for_smoke(path: Path, label: str):
+    if not path.exists():
+        raise FileNotFoundError(f"{label} not found: {path}")
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheetnames = list(wb.sheetnames)
+    finally:
+        wb.close()
+    if not sheetnames:
+        raise RuntimeError(f"{label} has no worksheets: {path}")
+    return sheetnames
+
+
+def _run_smoke_test() -> int:
+    print("Email Builder smoke test")
+    print(f"IS_MACOS = {IS_MACOS}")
+    print(f"frozen = {bool(getattr(sys, 'frozen', False))}")
+    print(f"BASE_DIR = {BASE_DIR}")
+    print(f"MASTER_FILE = {MASTER_FILE}")
+    print(f"CC_LISTS_FILE = {CC_LISTS_FILE}")
+    print(f"EMAIL_TEMPLATES_DIR = {EMAIL_TEMPLATES_DIR}")
+
+    failures = []
+    try:
+        master_sheets = _load_workbook_for_smoke(MASTER_FILE, "Master workbook")
+        if not any(name in master_sheets for name in _sheet_aliases(MASTER_SHEET)):
+            expected = " or ".join(_sheet_aliases(MASTER_SHEET))
+            failures.append(f"Master workbook is missing {expected}; found: {', '.join(master_sheets)}")
+        print(f"Master workbook sheets = {', '.join(master_sheets)}")
+    except Exception as exc:
+        failures.append(str(exc))
+
+    try:
+        cc_sheets = _load_workbook_for_smoke(CC_LISTS_FILE, "Internal CC lists workbook")
+        print(f"Internal CC lists sheets = {', '.join(cc_sheets)}")
+    except Exception as exc:
+        failures.append(str(exc))
+
+    if not EMAIL_TEMPLATES_DIR.exists():
+        failures.append(f"Email templates directory not found: {EMAIL_TEMPLATES_DIR}")
+    else:
+        template_files = sorted(EMAIL_TEMPLATES_DIR.rglob("*.eml"))
+        if not template_files:
+            failures.append(f"No .eml templates found in: {EMAIL_TEMPLATES_DIR}")
+        for path in template_files:
+            try:
+                with path.open("rb") as handle:
+                    BytesParser(policy=policy.default).parse(handle)
+            except Exception as exc:
+                failures.append(f"Failed to parse template {path}: {exc}")
+        print(f"Email templates parsed = {len(template_files)}")
+
+    if failures:
+        print("Smoke test failed:", file=sys.stderr)
+        for failure in failures:
+            print(f"- {failure}", file=sys.stderr)
+        return 1
+
+    print("Smoke test passed")
+    return 0
+
+
+def main() -> int:
+    if os.environ.get("EMAIL_BUILDER_SMOKE_TEST") == "1":
+        return _run_smoke_test()
+
     try:
         root = ttk.Window()
     except Exception:
         root = tk.Tk()
     app = EmailTemplateApp(root)
     root.mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

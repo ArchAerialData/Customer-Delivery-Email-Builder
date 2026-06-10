@@ -17,10 +17,55 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: python3 -m pip install -r macOS/requirements-macos.txt
+        run: python3 -m pip install -r macOS/requirements-macos.txt pyinstaller
 
       - name: Compile app
         run: python3 -m py_compile email_template_gui.py
 
       - name: Import GUI module
         run: python3 -c "import email_template_gui; print('IS_MACOS =', email_template_gui.IS_MACOS)"
+
+      - name: Validate source resources
+        run: EMAIL_BUILDER_SMOKE_TEST=1 python3 email_template_gui.py
+
+      - name: Build macOS app
+        run: |
+          python3 -m PyInstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --name "Email Builder" \
+            --collect-all ttkbootstrap \
+            --add-data "$PWD/Reference Data:Reference Data" \
+            --specpath build \
+            --workpath build/pyinstaller \
+            --distpath dist \
+            email_template_gui.py
+
+      - name: Smoke test packaged app
+        run: |
+          export HOME="$RUNNER_TEMP/email-builder-smoke-home"
+          mkdir -p "$HOME"
+          EMAIL_BUILDER_SMOKE_TEST=1 "dist/Email Builder.app/Contents/MacOS/Email Builder"
+
+      - name: Create DMG
+        run: |
+          rm -rf "dist/dmg-root"
+          mkdir -p "dist/dmg-root"
+          cp -R "dist/Email Builder.app" "dist/dmg-root/Email Builder.app"
+          ln -s /Applications "dist/dmg-root/Applications"
+          hdiutil create \
+            -volname "Email Builder" \
+            -srcfolder "dist/dmg-root" \
+            -ov \
+            -format UDZO \
+            "dist/Email Builder.dmg"
+
+      - name: Verify DMG
+        run: hdiutil verify "dist/Email Builder.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: email-builder-macos
+          path: dist/Email Builder.dmg
