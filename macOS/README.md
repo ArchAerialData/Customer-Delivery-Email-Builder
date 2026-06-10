@@ -68,3 +68,26 @@ chmod +x "macOS/Run Email Builder.command"
 ```
 
 When running from source, the workbook editing screens use `Reference Data/XLSX Workbooks/Customer Information.xlsx`.
+
+## Optional SharePoint Workbook Sync
+
+The app can use a SharePoint-hosted `Customer Information.xlsx` workbook when a per-user SharePoint config is enabled. Local workbook mode remains the default.
+
+Before enabling SharePoint mode:
+
+1. Register a Microsoft Entra public-client desktop app with delegated `User.Read`, `Files.ReadWrite`, and `offline_access` scopes.
+2. Prepare a SharePoint-ready workbook copy:
+
+```bash
+python3 scripts/prepare_sharepoint_workbook.py
+```
+
+3. Upload the prepared copy to SharePoint.
+4. Create `~/Library/Application Support/Email Builder/sharepoint_config.json` from `sharepoint_config.example.json` and set `"enabled": true`.
+5. Validate access against the SharePoint copy:
+
+```bash
+python3 scripts/sharepoint_workbook_probe.py
+```
+
+Use `scripts/sharepoint_workbook_probe.py --write-test` only against a sandbox workbook. More details are in `docs/sharepoint-excel-sync.md`.

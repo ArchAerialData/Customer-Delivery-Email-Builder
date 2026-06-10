@@ -23,6 +23,16 @@ except Exception:  # pragma: no cover
 
 import openpyxl
 
+from sharepoint_excel_sync import (
+    LocalExcelProjectDataSource,
+    ProjectConflictError,
+    SharePointProjectDataSource,
+    SharePointSyncError,
+    SharePointWorkbookConfig,
+    WorkbookFormatError,
+    default_config_path,
+)
+
 try:
     import win32com.client as win32
 except Exception:  # pragma: no cover
@@ -352,6 +362,8 @@ class EmailTemplateApp:
         self.email_templates = {}
         self._undo_stack = []
         self.graph_client = None
+        self._project_data_source_error = ""
+        self.project_data_source = self._create_project_data_source()
 
         self._apply_theme()
         self._ensure_master_workbook_schema()
@@ -361,6 +373,33 @@ class EmailTemplateApp:
         self._refresh_clients()
         self._set_default_date()
         self._update_email_preview()
+
+    def _create_project_data_source(self):
+        try:
+            config = SharePointWorkbookConfig.load()
+            if config.enabled:
+                return SharePointProjectDataSource(config)
+        except Exception as exc:
+            logger.warning("SharePoint data source unavailable; using local workbook: %s", exc)
+            self._project_data_source_error = str(exc)
+        return LocalExcelProjectDataSource(MASTER_FILE, email_normalizer=normalize_email_list)
+
+    def _using_sharepoint_projects(self) -> bool:
+        return bool(getattr(self.project_data_source, "is_remote", False))
+
+    def _sync_status_text(self) -> str:
+        config_hint = f"Config: {default_config_path()}"
+        if self._using_sharepoint_projects() and self._project_data_source_error:
+            return f"Project data: SharePoint workbook unavailable. {self._project_data_source_error}. {config_hint}"
+        if self._using_sharepoint_projects():
+            return f"Project data: SharePoint workbook. {config_hint}"
+        if self._project_data_source_error:
+            return f"Project data: local workbook fallback. SharePoint unavailable: {self._project_data_source_error}"
+        return f"Project data: local workbook. {config_hint}"
+
+    def _set_sync_status(self, message: str | None = None):
+        if hasattr(self, "status_var"):
+            self.status_var.set(message or self._sync_status_text())
 
     def _load_data(self):
         self.sheet_data = {
@@ -510,22 +549,14 @@ class EmailTemplateApp:
         return row
 
     def _ensure_master_workbook_schema(self):
-        if not MASTER_FILE.exists():
-            return
-        wb = openpyxl.load_workbook(MASTER_FILE)
-        changed = False
-        for sheet_name in (MASTER_SHEET, OIL_GAS_SHEET, COMPLETED_SHEET):
-            resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=True)
-            if not resolved_sheet:
-                continue
-            headers_before = [cell.value for cell in next(wb[resolved_sheet].iter_rows(min_row=1, max_row=1))]
-            ws = self._get_or_create_sheet(wb, sheet_name)
-            _, sheet_changed = self._master_column_map(ws, ensure=True)
-            headers_after = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
-            changed = changed or sheet_changed or (not any(headers_before) and any(headers_after))
-        if changed:
-            wb.save(MASTER_FILE)
-        wb.close()
+        try:
+            self.project_data_source.ensure_schema()
+        except WorkbookFormatError as exc:
+            self._project_data_source_error = str(exc)
+            logger.warning("Project workbook schema validation failed: %s", exc)
+        except SharePointSyncError as exc:
+            self._project_data_source_error = str(exc)
+            logger.warning("Project workbook sync unavailable: %s", exc)
 
     def _sync_primary_master_views(self):
         self.master_data = list(self.sheet_data.get(MASTER_SHEET, []))
@@ -639,67 +670,28 @@ class EmailTemplateApp:
         return wb
 
     def _read_master_data(self, sheet_name: str = MASTER_SHEET, allow_missing: bool = False):
-        wb = openpyxl.load_workbook(MASTER_FILE, data_only=True)
-        resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=allow_missing)
-        if resolved_sheet is None:
-            wb.close()
-            return []
-        ws = wb[resolved_sheet]
-        col_map, _ = self._master_column_map(ws, ensure=False)
-        client_idx = col_map.get("client", 1) - 1
-        site_idx = col_map.get("project name", 2) - 1
-        link_idx = col_map.get("dropbox urls", 3) - 1
-        email_idx = col_map.get("operations contact email", 4) - 1
-        procore_idx = col_map.get("procore")
-        if procore_idx is not None:
-            procore_idx -= 1
-        internal_url_idx = col_map.get("internal urls")
-        if internal_url_idx is not None:
-            internal_url_idx -= 1
-        rows = []
-        for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-            client = _master_cell_value(row, client_idx)
-            site = _master_cell_value(row, site_idx)
-            link = _master_cell_value(row, link_idx)
-            email = _master_cell_value(row, email_idx)
-            procore = _master_cell_value(row, procore_idx)
-            internal_url = _master_cell_value(row, internal_url_idx)
-            if client:
-                rows.append({
-                    "row": idx,
-                    "client": client,
-                    "site": site,
-                    "link": link,
-                    "email": normalize_email_list(email),
-                    "procore": procore,
-                    "internal_url": internal_url,
-                })
-        wb.close()
-        return rows
+        try:
+            rows = self.project_data_source.list_projects(sheet_name, allow_missing=allow_missing)
+            if self._using_sharepoint_projects():
+                self._project_data_source_error = ""
+            return rows
+        except Exception as exc:
+            self._project_data_source_error = str(exc)
+            logger.warning("Failed to read project data from %s: %s", sheet_name, exc)
+            if self._using_sharepoint_projects():
+                message = (
+                    "SharePoint project data could not be loaded. "
+                    "Check the SharePoint config, workbook tables, and Microsoft permissions."
+                )
+                if hasattr(self, "status_var"):
+                    self.status_var.set(message)
+                else:
+                    logger.warning(message)
+                return []
+            raise
 
     def _sort_master_sheet(self, sheet_name: str = MASTER_SHEET):
-        wb = openpyxl.load_workbook(MASTER_FILE)
-        resolved_sheet = self._resolve_sheet_name(wb, sheet_name, allow_missing=(sheet_name in (OIL_GAS_SHEET, COMPLETED_SHEET)))
-        if resolved_sheet is None:
-            wb.close()
-            return
-        ws = wb[resolved_sheet]
-        col_map, _ = self._master_column_map(ws, ensure=True)
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
-        # Preserve rows but sort by Client then Project Name
-        def _key(row):
-            client = _master_cell_value(row, col_map.get("client", 1) - 1)
-            site = _master_cell_value(row, col_map.get("project name", 2) - 1)
-            return (str(client).strip().lower(), str(site).strip().lower())
-        rows_sorted = sorted(rows, key=_key)
-        # Clear existing data rows
-        if ws.max_row > 1:
-            ws.delete_rows(2, ws.max_row - 1)
-        # Write sorted rows back
-        for r in rows_sorted:
-            ws.append(list(r))
-        wb.save(MASTER_FILE)
-        wb.close()
+        self.project_data_source.sort_sheet(sheet_name)
 
     def _read_dropbox_data(self):
         return [
@@ -799,6 +791,12 @@ class EmailTemplateApp:
             pass
 
     def _undo_last_change(self):
+        if self._using_sharepoint_projects():
+            message = "Undo is local-workbook only. Use SharePoint version history for shared workbook rollback."
+            if hasattr(self, "status_var"):
+                self.status_var.set(message)
+            messagebox.showinfo("Undo", message)
+            return
         if not self._undo_stack:
             if hasattr(self, "status_var"):
                 self.status_var.set("Nothing to undo.")
@@ -902,6 +900,7 @@ class EmailTemplateApp:
         self.status_var = tk.StringVar(value="")
         status = ttk.Label(self.root, textvariable=self.status_var, style="Muted.TLabel", anchor="w")
         status.grid(row=1, column=0, sticky="ew")
+        self._set_sync_status()
 
         self._show_tab("compose")
 
@@ -1310,6 +1309,9 @@ class EmailTemplateApp:
         ttk.Button(btns, text="Edit", command=lambda sheet=sheet_name: self._update_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Delete", command=lambda sheet=sheet_name: self._delete_master_entry(sheet)).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Reload", command=lambda sheet=sheet_name: self._reload_master_tab(sheet)).pack(side="left", padx=(0, 6))
+        if self._using_sharepoint_projects():
+            ttk.Button(btns, text="Open SharePoint", command=self._open_sharepoint_workbook).pack(side="left", padx=(0, 6))
+            ttk.Button(btns, text="Sign Out", command=self._clear_sharepoint_token_cache).pack(side="left", padx=(0, 6))
         ttk.Button(btns, text="Undo Last Change", command=self._undo_last_change).pack(side="left", padx=(0, 6))
         if sheet_name != COMPLETED_SHEET:
             ttk.Button(btns, text="Move To Completed", command=lambda sheet=sheet_name: self._move_selected_master_entry_to_completed(sheet)).pack(side="left")
@@ -1322,6 +1324,24 @@ class EmailTemplateApp:
             self.master_tree = tree
 
         self._refresh_master_tree(sheet_name)
+
+    def _open_sharepoint_workbook(self):
+        url = getattr(self.project_data_source, "web_url", "") or ""
+        if not url:
+            messagebox.showinfo("SharePoint", "No SharePoint workbook URL is available.")
+            return
+        webbrowser.open(url)
+
+    def _clear_sharepoint_token_cache(self):
+        if not self._using_sharepoint_projects():
+            return
+        if not messagebox.askyesno("SharePoint Sign Out", "Clear the saved Microsoft sign-in token for this app?"):
+            return
+        try:
+            self.project_data_source.clear_token_cache()
+            self._set_sync_status("SharePoint sign-in token cleared. Sign in again on the next sync.")
+        except Exception as exc:
+            messagebox.showerror("SharePoint Sign Out", f"Failed to clear sign-in token: {exc}")
 
     def _build_cc_tab(self):
         outer = ttk.Frame(self.cc_tab)
@@ -2245,8 +2265,8 @@ class EmailTemplateApp:
         selected = self.dropbox_tree.selection()
         if not selected:
             return
-        row_id = int(selected[0])
-        row = next((r for r in self.dropbox_data if r["row"] == row_id), None)
+        row_id = selected[0]
+        row = next((r for r in self.dropbox_data if str(r["row"]) == str(row_id)), None)
         if not row:
             return
         self.db_client_var.set(row["client"])
@@ -2273,8 +2293,8 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to edit.")
             return
-        row_id = int(selected[0])
-        row = next((r for r in self.sheet_data.get(sheet_name, []) if r["row"] == row_id), None)
+        row_id = selected[0]
+        row = next((r for r in self.sheet_data.get(sheet_name, []) if str(r["row"]) == str(row_id)), None)
         if not row:
             messagebox.showwarning("Select Row", "The selected row could not be found.")
             return
@@ -2361,7 +2381,7 @@ class EmailTemplateApp:
                 messagebox.showwarning("Missing Data", "Client is required.", parent=dialog)
                 return
             try:
-                self._save_master_entry(sheet_name, values, row["row"] if row else None)
+                self._save_master_entry(sheet_name, values, row)
             except Exception as exc:
                 messagebox.showerror("Master Data Error", f"Failed to save entry: {exc}", parent=dialog)
                 return
@@ -2374,43 +2394,93 @@ class EmailTemplateApp:
         client_entry.focus_set()
         dialog.wait_window()
 
-    def _save_master_entry(self, sheet_name: str, values: dict, row_id: int | None = None):
-        try:
+    def _save_project_row_with_conflict_prompt(
+        self,
+        sheet_name: str,
+        values: dict,
+        row: dict | None = None,
+        *,
+        prompt: str,
+    ):
+        row_key = row.get("row") if row else None
+        expected_modified_utc = row.get("modified_utc") if row else None
+        if not self._using_sharepoint_projects():
             self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            if row_id is None:
-                ws = self._get_or_create_sheet(wb, sheet_name)
-                ws.append(
-                    self._build_master_row(
-                        ws,
-                        {
-                            "client": values["client"],
-                            "project name": values["site"],
-                            "dropbox urls": values["link"],
-                            "operations contact email": values["email"],
-                            "procore": values["procore"],
-                            "internal urls": values["internal_url"],
-                        },
-                    )
-                )
-            else:
-                ws = wb[self._resolve_sheet_name(wb, sheet_name)]
-                col_map, _ = self._master_column_map(ws, ensure=True)
-                ws.cell(row=row_id, column=col_map["client"], value=values["client"])
-                ws.cell(row=row_id, column=col_map["project name"], value=values["site"])
-                ws.cell(row=row_id, column=col_map["dropbox urls"], value=values["link"])
-                ws.cell(row=row_id, column=col_map["operations contact email"], value=values["email"])
-                ws.cell(row=row_id, column=col_map["procore"], value=values["procore"])
-                ws.cell(row=row_id, column=col_map["internal urls"], value=values["internal_url"])
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet(sheet_name)
-            self._reload_master_tab(sheet_name)
-        finally:
-            try:
-                wb.close()
-            except Exception:
-                pass
+        try:
+            self.project_data_source.save_project(
+                sheet_name,
+                values,
+                row_key,
+                expected_modified_utc=expected_modified_utc,
+            )
+        except ProjectConflictError:
+            if not messagebox.askyesno("SharePoint Conflict", prompt):
+                raise
+            self.project_data_source.save_project(
+                sheet_name,
+                values,
+                row_key,
+                expected_modified_utc=expected_modified_utc,
+                force=True,
+            )
+
+    def _save_master_entry(self, sheet_name: str, values: dict, row: dict | None = None):
+        self._save_project_row_with_conflict_prompt(
+            sheet_name,
+            values,
+            row,
+            prompt="This row changed in SharePoint after you opened it. Overwrite the SharePoint version with your changes?",
+        )
+        self._reload_master_tab(sheet_name)
+        self._set_sync_status("Saved project data.")
+
+    def _delete_project_row_with_conflict_prompt(self, sheet_name: str, row: dict):
+        row_key = row.get("row")
+        expected_modified_utc = row.get("modified_utc")
+        if not self._using_sharepoint_projects():
+            self._record_undo(MASTER_FILE)
+        try:
+            self.project_data_source.delete_project(
+                sheet_name,
+                row_key,
+                expected_modified_utc=expected_modified_utc,
+            )
+        except ProjectConflictError:
+            if not messagebox.askyesno(
+                "SharePoint Conflict",
+                "This row changed in SharePoint after you selected it. Delete it anyway?",
+            ):
+                raise
+            self.project_data_source.delete_project(
+                sheet_name,
+                row_key,
+                expected_modified_utc=expected_modified_utc,
+                force=True,
+            )
+
+    def _move_project_row_with_conflict_prompt(self, sheet_name: str, row: dict):
+        row_key = row.get("row")
+        expected_modified_utc = row.get("modified_utc")
+        if not self._using_sharepoint_projects():
+            self._record_undo(MASTER_FILE)
+        try:
+            self.project_data_source.move_project_to_completed(
+                sheet_name,
+                row_key,
+                expected_modified_utc=expected_modified_utc,
+            )
+        except ProjectConflictError:
+            if not messagebox.askyesno(
+                "SharePoint Conflict",
+                "This row changed in SharePoint after you selected it. Move it to Completed anyway?",
+            ):
+                raise
+            self.project_data_source.move_project_to_completed(
+                sheet_name,
+                row_key,
+                expected_modified_utc=expected_modified_utc,
+                force=True,
+            )
 
     def _delete_master_entry(self, sheet_name: str = MASTER_SHEET):
         widgets = self.client_site_tabs.get(sheet_name)
@@ -2420,48 +2490,26 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to delete.")
             return
-        row_id = int(selected[0])
+        row_key = selected[0]
+        row = next((r for r in self.sheet_data.get(sheet_name, []) if str(r["row"]) == str(row_key)), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
         if not messagebox.askyesno("Confirm Delete", "Delete selected entry?"):
             return
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, sheet_name)]
-            ws.delete_rows(row_id, 1)
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet(sheet_name)
+            self._delete_project_row_with_conflict_prompt(sheet_name, row)
             self._reload_master_data(sheet_name=sheet_name)
+            self._set_sync_status("Deleted project data.")
         except Exception as exc:
             messagebox.showerror("Master Data Error", f"Failed to delete entry: {exc}")
 
-    def _move_master_entry_to_completed(self, sheet_name: str, row_id: int):
-        wb = None
-        try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            source_ws = wb[self._resolve_sheet_name(wb, sheet_name)]
-            completed_ws = self._get_or_create_sheet(wb, COMPLETED_SHEET)
-            row_values = [
-                source_ws.cell(row=row_id, column=col_idx).value
-                for col_idx in range(1, source_ws.max_column + 1)
-            ]
-            completed_ws.append(row_values)
-            source_ws.delete_rows(row_id, 1)
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet(sheet_name)
-            self._sort_master_sheet(COMPLETED_SHEET)
-            self._reload_master_data(sheet_name=sheet_name, refresh_clients=(sheet_name == self.compose_sheet_name))
-            self._reload_master_data(sheet_name=COMPLETED_SHEET, refresh_clients=False)
-            if hasattr(self, "status_var"):
-                self.status_var.set(f"Moved entry to {COMPLETED_SHEET}.")
-        finally:
-            try:
-                if wb:
-                    wb.close()
-            except Exception:
-                pass
+    def _move_master_entry_to_completed(self, sheet_name: str, row: dict):
+        self._move_project_row_with_conflict_prompt(sheet_name, row)
+        self._reload_master_data(sheet_name=sheet_name, refresh_clients=(sheet_name == self.compose_sheet_name))
+        self._reload_master_data(sheet_name=COMPLETED_SHEET, refresh_clients=False)
+        if hasattr(self, "status_var"):
+            self.status_var.set(f"Moved entry to {COMPLETED_SHEET}.")
 
     def _move_selected_master_entry_to_completed(self, sheet_name: str = MASTER_SHEET):
         widgets = self.client_site_tabs.get(sheet_name)
@@ -2471,9 +2519,13 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to move.")
             return
-        row_id = int(selected[0])
+        row_key = selected[0]
+        row = next((r for r in self.sheet_data.get(sheet_name, []) if str(r["row"]) == str(row_key)), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
         try:
-            self._move_master_entry_to_completed(sheet_name, row_id)
+            self._move_master_entry_to_completed(sheet_name, row)
         except Exception as exc:
             messagebox.showerror("Master Data Error", f"Failed to move entry: {exc}")
 
@@ -2485,13 +2537,14 @@ class EmailTemplateApp:
             messagebox.showwarning("Missing Data", "Client and Site are required.")
             return
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, MASTER_SHEET)]
-            ws.append([client, site, link, ""])
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet()
+            self._save_project_row_with_conflict_prompt(MASTER_SHEET, {
+                "client": client,
+                "site": site,
+                "link": link,
+                "email": "",
+                "procore": "",
+                "internal_url": "",
+            }, prompt="This row changed in SharePoint. Overwrite the SharePoint version with this Dropbox entry?")
             self._reload_dropbox_data()
         except Exception as exc:
             messagebox.showerror("Dropbox Error", f"Failed to add entry: {exc}")
@@ -2501,19 +2554,23 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to update.")
             return
-        row_id = int(selected[0])
+        row_id = selected[0]
+        row = next((r for r in self.sheet_data.get(MASTER_SHEET, []) if str(r["row"]) == str(row_id)), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
         client = self.db_client_var.get().strip()
         site = self.db_site_var.get().strip()
         link = self.db_link_var.get().strip()
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, MASTER_SHEET)]
-            ws.cell(row=row_id, column=1, value=client)
-            ws.cell(row=row_id, column=2, value=site)
-            ws.cell(row=row_id, column=3, value=link)
-            wb.save(MASTER_FILE)
-            wb.close()
+            self._save_project_row_with_conflict_prompt(MASTER_SHEET, {
+                "client": client,
+                "site": site,
+                "link": link,
+                "email": row.get("email", ""),
+                "procore": row.get("procore", ""),
+                "internal_url": row.get("internal_url", ""),
+            }, row, prompt="This row changed in SharePoint after you selected it. Overwrite the SharePoint version with this Dropbox edit?")
             self._reload_dropbox_data()
         except Exception as exc:
             messagebox.showerror("Dropbox Error", f"Failed to update entry: {exc}")
@@ -2523,16 +2580,15 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to delete.")
             return
-        row_id = int(selected[0])
+        row_id = selected[0]
+        row = next((r for r in self.sheet_data.get(MASTER_SHEET, []) if str(r["row"]) == str(row_id)), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
         if not messagebox.askyesno("Confirm Delete", "Delete selected Dropbox entry?"):
             return
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, MASTER_SHEET)]
-            ws.delete_rows(row_id, 1)
-            wb.save(MASTER_FILE)
-            wb.close()
+            self._delete_project_row_with_conflict_prompt(MASTER_SHEET, row)
             self._reload_dropbox_data()
         except Exception as exc:
             messagebox.showerror("Dropbox Error", f"Failed to delete entry: {exc}")
@@ -2549,8 +2605,8 @@ class EmailTemplateApp:
         selected = self.contacts_tree.selection()
         if not selected:
             return
-        row_id = int(selected[0])
-        row = next((r for r in self.contacts_data if r["row"] == row_id), None)
+        row_id = selected[0]
+        row = next((r for r in self.contacts_data if str(r["row"]) == str(row_id)), None)
         if not row:
             return
         self.ct_client_var.set(row["client"])
@@ -2565,13 +2621,14 @@ class EmailTemplateApp:
             messagebox.showwarning("Missing Data", "Client and Site are required.")
             return
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, MASTER_SHEET)]
-            ws.append([client, site, None, email])
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet()
+            self._save_project_row_with_conflict_prompt(MASTER_SHEET, {
+                "client": client,
+                "site": site,
+                "link": "",
+                "email": email,
+                "procore": "",
+                "internal_url": "",
+            }, prompt="This row changed in SharePoint. Overwrite the SharePoint version with this contact entry?")
             self._reload_contacts_data()
         except Exception as exc:
             messagebox.showerror("Contacts Error", f"Failed to add entry: {exc}")
@@ -2581,20 +2638,23 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to update.")
             return
-        row_id = int(selected[0])
+        row_id = selected[0]
+        row = next((r for r in self.sheet_data.get(MASTER_SHEET, []) if str(r["row"]) == str(row_id)), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
         client = self.ct_client_var.get().strip()
         site = self.ct_site_var.get().strip()
         email = normalize_email_list(self.ct_email_var.get())
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, MASTER_SHEET)]
-            ws.cell(row=row_id, column=1, value=client)
-            ws.cell(row=row_id, column=2, value=site)
-            ws.cell(row=row_id, column=4, value=email)
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet()
+            self._save_project_row_with_conflict_prompt(MASTER_SHEET, {
+                "client": client,
+                "site": site,
+                "link": row.get("link", ""),
+                "email": email,
+                "procore": row.get("procore", ""),
+                "internal_url": row.get("internal_url", ""),
+            }, row, prompt="This row changed in SharePoint after you selected it. Overwrite the SharePoint version with this contact edit?")
             self._reload_contacts_data()
         except Exception as exc:
             messagebox.showerror("Contacts Error", f"Failed to update entry: {exc}")
@@ -2604,17 +2664,15 @@ class EmailTemplateApp:
         if not selected:
             messagebox.showwarning("Select Row", "Choose a row to delete.")
             return
-        row_id = int(selected[0])
+        row_id = selected[0]
+        row = next((r for r in self.sheet_data.get(MASTER_SHEET, []) if str(r["row"]) == str(row_id)), None)
+        if not row:
+            messagebox.showwarning("Select Row", "The selected row could not be found.")
+            return
         if not messagebox.askyesno("Confirm Delete", "Delete selected contact entry?"):
             return
         try:
-            self._record_undo(MASTER_FILE)
-            wb = openpyxl.load_workbook(MASTER_FILE)
-            ws = wb[self._resolve_sheet_name(wb, MASTER_SHEET)]
-            ws.delete_rows(row_id, 1)
-            wb.save(MASTER_FILE)
-            wb.close()
-            self._sort_master_sheet()
+            self._delete_project_row_with_conflict_prompt(MASTER_SHEET, row)
             self._reload_contacts_data()
         except Exception as exc:
             messagebox.showerror("Contacts Error", f"Failed to delete entry: {exc}")

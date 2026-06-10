@@ -37,6 +37,8 @@ jobs:
             --windowed \
             --name "Email Builder" \
             --collect-all ttkbootstrap \
+            --hidden-import msal \
+            --hidden-import requests \
             --add-data "$PWD/Reference Data:Reference Data" \
             --specpath build \
             --workpath build/pyinstaller \

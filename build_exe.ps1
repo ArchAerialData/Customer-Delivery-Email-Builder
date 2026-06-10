@@ -12,7 +12,7 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     throw "Python is required to build the exe."
 }
 
-python -m pip install PyInstaller openpyxl ttkbootstrap pywin32 | Out-Host
+python -m pip install PyInstaller openpyxl ttkbootstrap pywin32 msal requests | Out-Host
 
 if (Test-Path $buildRoot) {
     Remove-Item -LiteralPath $buildRoot -Recurse -Force
@@ -31,6 +31,8 @@ python -m PyInstaller `
     --name "Email Builder" `
     --collect-all ttkbootstrap `
     --hidden-import win32timezone `
+    --hidden-import msal `
+    --hidden-import requests `
     --distpath $distRoot `
     email_template_gui.py
 

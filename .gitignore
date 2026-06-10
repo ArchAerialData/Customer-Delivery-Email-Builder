@@ -17,9 +17,11 @@ env/
 # Graph auth/config secrets and token cache
 Reference Data/Backend Graph/
 Reference Data/2026_02_03/
+sharepoint_config.json
+.sharepoint_token_cache.json
+Reference Data/SharePoint/
 
 # Build outputs
 build/
 dist/
 *.spec
-

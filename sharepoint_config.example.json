@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "client_id": "00000000-0000-0000-0000-000000000000",
+  "sharing_url": "https://contoso.sharepoint.com/:x:/s/site-name/example",
+  "scopes": [
+    "User.Read",
+    "Files.ReadWrite",
+    "offline_access"
+  ]
+}
