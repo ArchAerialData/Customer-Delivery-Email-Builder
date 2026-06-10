@@ -1,16 +1,13 @@
-name: macOS smoke test
+name: Build macOS App
 
 on:
-  push:
-    branches:
-      - MacOS-Compatibility
-  pull_request:
-    branches:
-      - MacOS-Compatibility
   workflow_dispatch:
 
 jobs:
   macos:
+    # Temporarily disabled while feature work is in progress.
+    # Re-enable by removing this guard and restoring the push/pull_request triggers.
+    if: ${{ false }}
     runs-on: macos-latest
 
     steps:

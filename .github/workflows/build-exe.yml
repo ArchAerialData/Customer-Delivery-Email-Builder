@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   build:
+    # Temporarily disabled while feature work is in progress.
+    # Re-enable by removing this guard and restoring the release tag push trigger if needed.
     if: ${{ false }}
     runs-on: windows-latest
 
